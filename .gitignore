@@ -1,0 +1,25 @@
+# Private inputs and third-party reference material must never be published.
+*.xapk
+*.apk
+*.zip
+*.url
+test_login.txt
+.local/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.har
+*.saz
+*.log
+*.ipk
+node_modules/
+dist/
+user-config.json
+coverage/
+__pycache__/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

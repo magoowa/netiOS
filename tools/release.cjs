@@ -1,0 +1,83 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),zlib=require('node:zlib'),assert=require('node:assert/strict');
+const {execFileSync}=require('node:child_process');
+const root=path.resolve(__dirname,'..');
+const topFiles=['.gitignore','README.md','CHANGELOG.md','SECURITY.md','CONTRIBUTING.md','package.json','package-lock.json'];
+const directories=['app','service','tools','tests','config','docs','.github'];
+// docs/ also holds the private working journal (diagnoses, acceptance notes, plans, docs/en originals); only these
+// user-facing documents and the demonstration screenshots are published.
+const publicDocs=/^docs\/(?:USER_CONFIGURATION|THIRD-PARTY|TESTING|PUBLICATION)\.md$|^docs\/screenshots\/[a-z-]+\.png$/;
+function sources(directory=root){
+    const files=[];
+    function walk(relative){for(const item of fs.readdirSync(path.join(directory,relative),{withFileTypes:true})){
+        if(item.isSymbolicLink())throw Error('RELEASE_SYMLINK');
+        const file=path.posix.join(relative,item.name);
+        if(item.isDirectory())walk(file);
+        else if(file.startsWith('docs/')&&!publicDocs.test(file))continue;
+        else if(/\.(?:js|cjs|json|css|html|svg|png|woff2|py|md|ya?ml)$/.test(item.name)||/^(?:MDI|JOSEFIN|WEBOSTV)-LICENSE$/.test(item.name))files.push(file);
+        else throw Error('RELEASE_UNKNOWN_FILE');
+    }}
+    for(const name of directories)walk(name);
+    return topFiles.concat(files);
+}
+function pngClean(bytes){
+    assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+    let at=8;
+    while(at<bytes.length){const size=bytes.readUInt32BE(at),type=bytes.subarray(at+4,at+8).toString();assert(['IHDR','IDAT','IEND'].includes(type),'RELEASE_IMAGE_METADATA');at+=size+12;}
+    assert.equal(at,bytes.length);
+}
+function inspect(bytes,name,needles){
+    for(const needle of needles)assert(!bytes.includes(Buffer.from(needle)),'RELEASE_PRIVATE_VALUE');
+    if(name.endsWith('.md'))assert(!/\b(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})\b/.test(bytes.toString()),'RELEASE_PRIVATE_ADDRESS');
+    assert(!/(?:^|\/)(?:\.local|node_modules|test_login\.txt|user-config\.json)(?:\/|$)|\.(?:xapk|apk|har|pem|key)$/.test(name),'RELEASE_PRIVATE_FILE');
+    if(name.endsWith('.png'))pngClean(bytes);
+    if(name.endsWith('.svg'))assert(!/<(?:metadata|sodipodi:)|inkscape:|file:\/\/|<script|onload=/i.test(bytes.toString()),'RELEASE_SVG_METADATA');
+}
+function inspectPackage(bytes,needles){
+    assert.equal(bytes.subarray(0,8).toString(),'!<arch>\n');let count=0;
+    for(let at=8;at<bytes.length;){
+        const header=bytes.subarray(at,at+60).toString(),size=Number(header.slice(48,58)),name=header.slice(0,16).trim();
+        assert(Number.isSafeInteger(size)&&size>0&&at+60+size<=bytes.length,'RELEASE_ARCHIVE');
+        const data=bytes.subarray(at+60,at+60+size);at+=60+size+(size%2);if(!name.includes('.tar.gz'))continue;
+        const tar=zlib.gunzipSync(data);
+        for(let i=0;i+512<=tar.length;){
+            const head=tar.subarray(i,i+512);if(!head.some(x=>x))break;
+            const file=head.subarray(0,100).toString().replace(/\0.*$/,''),n=parseInt(head.subarray(124,136).toString().replace(/\0.*$/,'').trim()||'0',8);
+            assert(Number.isSafeInteger(n)&&n>=0&&i+512+n<=tar.length,'RELEASE_TAR');
+            inspect(tar.subarray(i+512,i+512+n),file,needles);inspect(head,file+'.header',needles);count++;i+=512+Math.ceil(n/512)*512;
+        }
+    }
+    assert(count>0);return count;
+}
+function release(){
+    const version=require('../package.json').version,dist=path.join(root,'dist'),output=path.join(dist,'release'),checkout=path.join(dist,'github','netiOS');
+    const needles=[root,root.replace(/\\/g,'/'),os.userInfo().username].filter(s=>s.length>=4);
+    const privateInput=['test_login.txt','.local/private/test_login.txt'].map(f=>path.join(root,f)).find(f=>fs.existsSync(f));
+    if(privateInput)for(const match of fs.readFileSync(privateInput,'utf8').matchAll(/^\s*(?:login|username|hasło|haslo|password)\s*[:=]\s*(.+)$/gim))if(match[1].trim().length>=4)needles.push(match[1].trim());
+    const extra=path.join(root,'.local/release-private.json');if(fs.existsSync(extra)){const values=JSON.parse(fs.readFileSync(extra));assert(Array.isArray(values)&&values.every(v=>typeof v==='string'&&v.length>=4));needles.push(...values);}
+    const files=sources();for(const file of files)inspect(fs.readFileSync(path.join(root,file)),file,needles);
+    const ipk='com.netiago.webos_'+version+'_all.ipk',bytes=fs.readFileSync(path.join(dist,ipk));
+    const entries=inspectPackage(bytes,needles),hash=crypto.createHash('sha256').update(bytes).digest('hex');
+    const manifest=JSON.parse(fs.readFileSync(path.join(dist,'com.netiago.webos.manifest.json')));
+    assert.equal(manifest.version,version);assert.equal(manifest.ipkHash.sha256,hash);assert.equal(manifest.ipkUrl,ipk);
+    for(const target of [output,checkout]){
+        assert(target.startsWith(dist+path.sep));
+        if(fs.existsSync(target)){
+            const archive=path.join(root,'.local','archive','release-'+Date.now()+'-'+path.basename(target));fs.mkdirSync(path.dirname(archive),{recursive:true});fs.renameSync(target,archive);
+        }
+        fs.mkdirSync(target,{recursive:true});
+    }
+    for(const name of [ipk,'com.netiago.webos.manifest.json','icon.png','SHA256SUMS'])fs.copyFileSync(path.join(dist,name),path.join(output,name));
+    for(const file of files){const to=path.join(checkout,file);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,file),to);}
+    execFileSync('git',['init','-b','codex/release-'+version],{cwd:checkout,stdio:'pipe'});
+    execFileSync('git',['add','--all'],{cwd:checkout,stdio:'pipe'});
+    // The export is authored by a neutral identity unless NETIOS_RELEASE_AUTHOR=git asks for the maintainer's own git identity.
+    const own=process.env.NETIOS_RELEASE_AUTHOR==='git',config=key=>execFileSync('git',['config',key],{cwd:root,encoding:'utf8'}).trim();
+    const name=own?config('user.name'):'netiOS Project',email=own?config('user.email'):'project@users.noreply.github.com';
+    execFileSync('git',['-c','user.name='+name,'-c','user.email='+email,'-c','commit.gpgsign=false','commit','-m','netiOS '+version+' reviewed source release'],{cwd:checkout,stdio:'pipe'});
+    execFileSync('git',['tag','v'+version],{cwd:checkout,stdio:'pipe'});
+    const archive=path.join(output,'netiOS-'+version+'-source.zip');execFileSync('git',['archive','--format=zip','--output',archive,'HEAD'],{cwd:checkout,stdio:'pipe'});
+    const sourceHash=crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');fs.appendFileSync(path.join(output,'SHA256SUMS'),sourceHash+'  '+path.basename(archive)+'\n');
+    console.log('RELEASE_PASS version='+version+' sources='+files.length+' packageEntries='+entries+' sha256='+hash);
+}
+if(require.main===module)release();else module.exports={sources,pngClean,inspect,inspectPackage};

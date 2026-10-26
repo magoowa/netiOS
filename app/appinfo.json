@@ -1,0 +1,13 @@
+{
+  "id": "com.netiago.webos",
+  "version": "0.5.0",
+  "vendor": "netiOS",
+  "type": "web",
+  "main": "index.html",
+  "title": "netiOS",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "splashBackground": "assets/splash.png"
+}

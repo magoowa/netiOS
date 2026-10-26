@@ -1,0 +1,5 @@
+{
+  "id": "com.netiago.webos.service",
+  "description": "Netia GO account and credential service",
+  "services": [{"name": "com.netiago.webos.service"}]
+}

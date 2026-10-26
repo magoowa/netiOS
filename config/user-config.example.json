@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "channelSort": {
+    "all": "alphabetical",
+    "favorites": "favorites-first",
+    "hidden": "alphabetical"
+  },
+  "librarySort": {
+    "series": "alphabetical",
+    "shows": "alphabetical"
+  },
+  "oledMinutes": 30,
+  "subtitleSize": 100,
+  "channels": []
+}
