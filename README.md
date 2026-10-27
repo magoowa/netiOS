@@ -2,16 +2,16 @@
 
 # netiOS
 
-Nieoficjalny klient Netia GO dla telewizorów LG z webOS 5 i nowszym. Wymagany abonament w Netii. Automatyczny dobór kanałów, programów i seriali dostępnych w ramach wykupionego pakietu.
+Nieoficjalny klient Netia GO dla telewizorów LG z webOS 4 i nowszym. Wymagany abonament w Netii. Automatyczny dobór kanałów, programów i seriali dostępnych w ramach wykupionego pakietu.
 Zero crapu, reklam i innego badziewia. Ciesz się ponad 200 odcinkami "Demakijażu" Ibisza, "Pamiętnikami z wakacji", "Zdradami" i innymi hitami z uniwersum polslopu!
 Funkcja OLED Saver automatycznie włączy wygaszacz ekranu wszystkim używającym TV jako maszyny grającej i uchroni matrycę przed wypaleniem pasku TV Republiki, TVNu czy co tam oglądacie.
 
 ## Najważniejsze funkcje
 
-1. **Logowanie na telewizorze** — oficjalny formularz Netii, klawiatura LG i opcjonalne szyfrowane zapamiętanie danych.
+1. **Logowanie na telewizorze** — oficjalny formularz Netii, klawiatura LG i szyfrowanie zapamiętanych danych. Dla starszych telewizorów z webOS 4 tunel do przenoszenia logowania do systemu.
 2. **Profile** — wybór profilu, profil domyślny i automatyczny wybór jedynego profilu.
 3. **Kanały w pakiecie** — logotypy, ulubione, ukryte, sortowanie alfabetyczne, tematyczne lub z ulubionymi na początku; lista zapamiętana między uruchomieniami.
-4. **Odtwarzacz DASH/Widevine i MP4 VOD** — najwyższa dostępna jakość na start, wybór jakości, audio i napisów, cofanie w buforze Netii.
+4. **Odtwarzacz DASH/Widevine i MP4 VOD** — najwyższa dostępna jakość na start, wybór innych poziomów jakości, audio i napisów, cofanie w buforze Netii.
 5. **Program TV, Seriale i Programy** — ramówka z granicami dni, katalogi z sezonami i opisami, zapamiętane listy i miniatury.
 6. **Pilot i opcje** — Natywna obsługa Magic Remote, płynne przewijanie, numery kanałów, kolorowe skróty, diagnostyka, panel wydajności i OLED Saver.
 
@@ -39,7 +39,7 @@ npm run release
 
 Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
 
-Pakiet po buildzie: `dist/com.netiago.webos_0.6.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
+Pakiet po buildzie: `dist/com.netiago.webos_0.6.4_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
 
 Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
 
@@ -47,7 +47,7 @@ Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI
 
 **[Poradnik instalacji krok po kroku](docs/INSTALL.md)**: wymagania, instalacja i logowanie, ze zrzutami ekranu. Obejmuje webOS 4, gdzie logujesz się na komputerze, a narzędzie przenosi sesję na telewizor.
 
-W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.6.0-installer.zip` i uruchom:
+W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.6.4-installer.zip` i uruchom:
 
 - **`Install-netiOS.cmd`**: wyszukuje telewizory, instaluje dołączoną paczkę przez SSH lub telnet i czeka na potwierdzenie od systemu. Alternatywnie paczkę wgrasz przez [Glasshouse](https://github.com/rorygallagher2024/glasshouse).
 - **`Import-Session.cmd`** (webOS 4): otwiera stronę logowania Netia GO w przeglądarce na komputerze; po zalogowaniu przenosi sesję na telewizor.
@@ -71,12 +71,12 @@ OLED Saver ma niezależny przełącznik ON/OFF i czas 30/60/90/120 minut bezczyn
 
 - [Teksty interfejsu](app/strings.json), [wspólny CSS](app/style.css).
 - [Konfiguracja i lista kanałów](docs/USER_CONFIGURATION.md); neutralny wzór: [user-config.example.json](config/user-config.example.json). Prawdziwy plik jest wyłączony z Git i nie zawiera danych logowania.
-- Opcjonalny injector: `node tools/inject-login.cjs` wykrywa TV przez SSDP, pyta o login/ukryte hasło i przesyła je tunelem SSH. Uwierzytelnienie pozostaje w oficjalnym iframe na TV. Wymaga root SSH i istniejącego inspektora na loopback 9998; nie włącza debugowania systemu. Telnet nie jest używany.
+- Opcjonalny injector: `node tools/inject-login.cjs` wykrywa TV przez SSDP, pyta o login/ukryte hasło i przesyła je tunelem SSH. Uwierzytelnienie pozostaje w oficjalnym iframe na TV. Wymaga root SSH i istniejącego inspektora na loopback 9998; nie włącza debugowania systemu.
 - [Historia zmian](CHANGELOG.md), [testy](docs/TESTING.md), [publikacja wydania](docs/PUBLICATION.md).
 
 ## Zgodność i ograniczenia
 
-Sprawdzono na webOS 5 (Chromium 68), w tym odtwarzanie chronionych kanałów w 1080p. Pozostałe generacje webOS wymagają testów. Liczba kanałów zależy od uprawnień konta i profilu.
+Sprawdzono na webOS 4 (Chromium 53) oraz webOS 5 (Chromium 68), w tym odtwarzanie chronionych kanałów w 1080p. Pozostałe generacje webOS wymagają testów. Liczba kanałów zależy od uprawnień konta i profilu.
 
 Niektóre kanały mogą odmówić licencji lub odtwarzania mimo widoczności w pakiecie. Wymagane PIN-y rodzicielskie i polityki CAC nie są obsługiwane i powodują jawną odmowę. Interaktywna weryfikacja CAPTCHA oraz długotrwałe odświeżanie sesji wymagają dalszych testów. Najwyższa jakość może buforować przy słabym łączu; dostępne jest Auto.
 

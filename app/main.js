@@ -45,6 +45,7 @@
             function finish(error, data) {
                 if (done) return; done = true; clearTimeout(timer);
                 bridges.splice(bridges.indexOf(bridge), 1);
+                if (error && error.message === 'PROFILE_REQUIRED') sessionLost();
                 if (error) reject(error); else resolve(data);
             }
             bridge.onservicecallback = function (value) {
@@ -53,6 +54,14 @@
             };
             bridge.call('luna://com.netiago.webos.service/' + method, JSON.stringify(params || {}));
         });
+    }
+    // webOS 4 can restart the service while the app stays open; the new service has no session, so every request answers
+    // PROFILE_REQUIRED (the guide then never loads). The app signs in again with the saved or imported session.
+    var recovering=false;
+    function sessionLost(){
+        if(recovering||['login','web-login','profiles'].indexOf(screen)>=0)return;recovering=true;
+        function done(){recovering=false;}
+        rpc('status').then(function(status){if(!status.loggedIn)return start();if(!status.preferenceKey)return profiles();}).then(done,function(error){done();notice(error);});
     }
     var setIcon=NetiosIcons.set;
     Array.prototype.forEach.call(document.querySelectorAll('[data-icon]'), function (button) { setIcon(button, button.dataset.icon, button.dataset.text?T(button.dataset.text):undefined); });
@@ -71,7 +80,7 @@
     $('oled-minutes').value=String(oledMinutes);Array.prototype.forEach.call($('oled-minutes').options,function(option){option.textContent=T('options.minutes',{minutes:option.value});});
     $('oled-minutes').mdiUpdate();
     $('oled-minutes').onchange=function(){var value=Number(this.value);if([30,60,90,120].indexOf(value)<0)return;oledMinutes=value;oledLastActivity=Date.now();try{localStorage.setItem('netios-oled-minutes',String(value));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
-    var optionHelp={'menu-favorite':'options.help.favorite','menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','perf-toggle':'options.help.perf','autonext-toggle':'options.help.autonext'};
+    var optionHelp={'menu-favorite':'options.help.favorite','menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','autonext-toggle':'options.help.autonext','menu-pin':'options.help.pin'};
     // Help follows focus only; a real pointer move focuses the hovered option, while a dialog opening under a resting
     // pointer (Chromium's synthetic mouseenter) no longer swaps the help for an option that is not selected.
     Object.keys(optionHelp).forEach(function(id){$(id).onfocus=function(){$('option-help').textContent=T(optionHelp[id]);};});
@@ -142,7 +151,7 @@
     function loadPreferences(status) {
         var nextKey=status.preferenceKey?'netia-prefs:'+status.preferenceKey:null;
         if(preferenceKey!==nextKey){libraryCache=Object.create(null);artworkQueue=[];libraryGeneration++;}
-        if(preferenceKey!==nextKey)configRevision=null;preferenceKey = nextKey;
+        if(preferenceKey!==nextKey){configRevision=null;hiddenUnlocked=false;}preferenceKey = nextKey;
         try { prefs = TVModel.preferences(preferenceKey ? JSON.parse(localStorage.getItem(preferenceKey)) : null); } catch (e) { prefs = TVModel.preferences(); }
         subtitleSize();
     }
@@ -425,12 +434,28 @@
         if(selected&&!selected.classList.contains('is-selected'))selected.classList.add('is-selected');
     }
     var channelHeroFrame=0;
+    // Text longer than its box ends with the last whole word that fits, then an ellipsis. Results are kept per text, so
+    // moving through the grid measures each description once.
+    var fittedText=new Map();
+    // A web font that arrives later changes line breaks, so measurements made before it are dropped.
+    if(document.fonts&&document.fonts.addEventListener)document.fonts.addEventListener('loadingdone',function(){fittedText.clear();});
+    function fitText(node,text){
+        var key=node.id+'|'+text;if(fittedText.has(key)){node.textContent=fittedText.get(key);return;}
+        node.textContent=text;if(!node.clientHeight)return;
+        var limit=node.clientHeight+1;
+        if(node.scrollHeight>limit){
+            var words=text.split(/\s+/),low=0,high=words.length-1;
+            while(low<high){var middle=Math.ceil((low+high)/2);node.textContent=words.slice(0,middle).join(' ')+'…';if(node.scrollHeight<=limit)low=middle;else high=middle-1;}
+            node.textContent=words.slice(0,low).join(' ').replace(/[\s,.;:–-]+$/,'')+'…';
+        }
+        fittedText.set(key,node.textContent);if(fittedText.size>500)fittedText.delete(fittedText.keys().next().value);
+    }
     function queueChannelHero(){if(!channelHeroFrame)channelHeroFrame=requestAnimationFrame(function(){channelHeroFrame=0;if(screen==='channels'&&!modal)hero();});}
     function hero() {
         markChannel();
         var c = channel(focusedChannel), p = c && nowPrograms[c.id];
         $('hero-channel').textContent = c ? c.title : T("text.kanaly_tv"); $('hero-title').textContent = p ? p.title : c ? c.title : T("text.wybierz_kanal");
-        $('hero-description').textContent = p ? p.description : c ? T("text.aktualne_informacje_o_programie_pojawia_sie_po_pobraniu") : T("text.zmien_filtr_lub_przywroc_ukryte_kanaly_w_opcjach");
+        fitText($('hero-description'), p ? p.description || '' : c ? T("text.aktualne_informacje_o_programie_pojawia_sie_po_pobraniu") : T("text.zmien_filtr_lub_przywroc_ukryte_kanaly_w_opcjach"));
         var meta = $('hero-meta'); meta.textContent = '';
         if (p) {
             var onAir = document.createElement('span'); onAir.className = 'on-air'; onAir.textContent = T("text.trwa"); meta.appendChild(onAir);
@@ -447,13 +472,15 @@
     }
     function openModal(id) {
         returnFocus = document.activeElement; modal = id; $('modal-backdrop').hidden = false;Scrolling.releasePointer();
-        $('channel-menu').hidden = id !== 'channel-menu'; $('player-settings').hidden = id !== 'player-settings'; $('diagnostics-dialog').hidden = id !== 'diagnostics-dialog';
+        $('channel-menu').hidden = id !== 'channel-menu'; $('player-settings').hidden = id !== 'player-settings'; $('diagnostics-dialog').hidden = id !== 'diagnostics-dialog';$('pin-dialog').hidden = id !== 'pin-dialog';
         // Focus the first option, not the header's close button; dialogs without options focus their close button.
         var first = $(id).querySelector(':scope>button:not([disabled]):not([hidden])') || $(id).querySelector('button:not([disabled])'); if (first) first.focus(); reveal();
     }
     function closeModal(restore) {
         if(modal==='diagnostics-dialog'&&restore!==false){openChannelMenu();focusControl($('menu-diagnostics'));return;}
-        if (!modal) return; modal = null; $('modal-backdrop').hidden = true; $('channel-menu').hidden = true; $('player-settings').hidden = true; $('diagnostics-dialog').hidden=true;
+        if (!modal) return; var cancelled=modal==='pin-dialog'&&pinState;if(cancelled)pinState=null;
+        modal = null; $('modal-backdrop').hidden = true; $('channel-menu').hidden = true; $('player-settings').hidden = true; $('diagnostics-dialog').hidden=true;$('pin-dialog').hidden=true;
+        if(cancelled)cancelled.resolve(false);
         if (restore !== false) { if (returnFocus && returnFocus.isConnected && returnFocus.offsetWidth) focusControl(returnFocus); else if (screen === 'channels') focusChannel(); }
         reveal();
     }
@@ -501,11 +528,52 @@
     setInterval(function(){if(modal==='diagnostics-dialog')$('diagnostics-clock').textContent=diagnosticTime(netiaNow());},1000);
     function openChannelMenu() {
         var globalOnly=screen==='profiles',c = globalOnly?null:channel(focusedChannel); $('channel-menu-title').textContent = c ? c.title : T("text.opcje_2");
-        ['menu-favorite','menu-hide','menu-restore','refresh-button'].forEach(function(id){$(id).hidden=globalOnly;});
+        ['menu-favorite','menu-hide','menu-restore','menu-pin','refresh-button'].forEach(function(id){$(id).hidden=globalOnly;});
         $('menu-favorite').disabled = $('menu-hide').disabled = !c;
         $('menu-favorite').removeAttribute('data-current-icon');setIcon($('menu-favorite'),'heart',c && prefs.favorites.indexOf(c.id)>=0?T('channels.favoriteRemove'):T('channels.favoriteAdd'));
-        $('menu-hide').removeAttribute('data-current-icon');setIcon($('menu-hide'),'ghost',c && prefs.hidden.indexOf(c.id)>=0?T('text.pokaz_kanal'):T('text.ukryj_kanal'));openModal('channel-menu');
+        $('menu-hide').removeAttribute('data-current-icon');setIcon($('menu-hide'),'ghost',c && prefs.hidden.indexOf(c.id)>=0?T('text.pokaz_kanal'):T('text.ukryj_kanal'));
+        $('menu-pin').removeAttribute('data-current-icon');setIcon($('menu-pin'),'lock',T(prefs.hiddenPin?'pin.menuChange':'pin.menuSet'));openModal('channel-menu');
     }
+    // The Hidden folder can be locked with a 4-digit PIN (Options). The profile's preferences keep only a hash of it. The
+    // folder stays open until the viewer switches to another filter or profile or the app goes to the background.
+    var pinState=null,hiddenUnlocked=false;
+    function pinHash(pin){var hash=0x811c9dc5,text='netios-hidden-pin:'+pin;for(var i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,0x01000193)>>>0;}return ('0000000'+hash.toString(16)).slice(-8);}
+    function renderPin(message){
+        var state=pinState;if(!state)return;
+        var titles={unlock:'pin.unlockTitle',set:'pin.setTitle',change:'pin.changeTitle'},prompts={current:'pin.current',new:'pin.new',repeat:'pin.repeat'};
+        $('pin-title').textContent=T(titles[state.mode]);$('pin-prompt').textContent=T(prompts[state.step]);
+        Array.prototype.forEach.call($('pin-dots').children,function(dot,i){dot.classList.toggle('filled',i<state.digits.length);});
+        $('pin-message').textContent=message||'';$('pin-remove').hidden=!(state.mode==='change'&&state.step==='new');
+    }
+    // mode 'unlock' checks the PIN, 'set' asks for a new one twice, 'change' checks the current one first. Resolves true on success.
+    function askPin(mode){
+        return new Promise(function(resolve){
+            pinState={mode:mode,step:mode==='set'?'new':'current',digits:'',first:'',resolve:resolve};
+            openModal('pin-dialog');renderPin();focusControl($('pin-key-5'));
+        });
+    }
+    function finishPin(){var state=pinState;pinState=null;closeModal();if(state)state.resolve(true);}
+    function pinDigit(digit){
+        var state=pinState;if(!state||state.digits.length>=4)return;state.digits+=digit;renderPin();if(state.digits.length<4)return;
+        // The fourth dot is shown filled for a moment before the answer.
+        setTimeout(function(){
+            if(pinState!==state)return;var pin=state.digits;state.digits='';
+            if(state.step==='current'){if(pinHash(pin)!==prefs.hiddenPin)return renderPin(T('pin.wrong'));if(state.mode==='unlock')return finishPin();state.step='new';return renderPin();}
+            if(state.step==='new'){state.first=pin;state.step='repeat';return renderPin();}
+            if(pin!==state.first){state.step='new';state.first='';return renderPin(T('pin.mismatch'));}
+            prefs.hiddenPin=pinHash(pin);savePreferences();finishPin();
+        },150);
+    }
+    function pinBack(){if(pinState&&pinState.digits){pinState.digits=pinState.digits.slice(0,-1);renderPin();}}
+    // Runs action at once when the folder is not locked, or after the right PIN.
+    function withHiddenUnlocked(action){
+        if(!prefs.hiddenPin||hiddenUnlocked)return action();
+        askPin('unlock').then(function(ok){if(ok){hiddenUnlocked=true;action();}});
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('#pin-keypad [data-digit]'),function(key){key.onclick=function(){pinDigit(key.dataset.digit);};});
+    $('pin-back').onclick=pinBack;$('close-pin').onclick=function(){closeModal();};
+    $('pin-remove').onclick=function(){prefs.hiddenPin=null;savePreferences();finishPin();};
+    $('menu-pin').onclick=function(){askPin(prefs.hiddenPin?'change':'set');};
     function stop() {
         samplePlayback();
         generation++; playerDay = ''; playerPrograms = []; clearTimeout(hideTimer); closeModal(false); playerConnecting=false; busySpinner();
@@ -517,24 +585,31 @@
     function tuneChannel(id){
         var target=channelNodes[id];
         if(screen==='channels'&&target){focusControl(target);centerChannel(target,true);if(channelMode==='hidden'){openChannelMenu();return;}}
-        if(busy){pendingTune=id;return;}begin(id);
+        // CH+/- while a channel is still connecting replaces it instead of waiting for a start that may never come.
+        if(busy){pendingTune=id;if(screen==='player'&&playerConnecting)stop();return;}begin(id);
     }
+    // Numbers and CH+/- count only the channels on screen; hidden ones only inside the (unlocked) Hidden folder, never in the player.
+    function tunableChannels(){return TVModel.channels(channelItems,prefs,channelMode==='hidden'&&screen!=='channels'?'all':channelMode);}
     function commitChannelNumber(){
-        var number=Number(channelDigits),items=TVModel.channels(channelItems,prefs,channelMode);clearChannelNumber();
+        var number=Number(channelDigits),items=tunableChannels();clearChannelNumber();
         if(number<1||number>items.length){notice(new Error('CHANNEL_NUMBER'));return;}tuneChannel(items[number-1].id);
     }
     function remoteChannelKey(e){
         if((screen!=='channels'&&screen!=='player')||selectedVod||modal||!$('guide').hidden||/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName))return false;
-        var direction=e.keyCode===427||e.key==='ChannelUp'?1:e.keyCode===428||e.key==='ChannelDown'?-1:0;
+        // LG remotes send CH+/- as PageUp/PageDown (33/34); 427/428 are the webOS channel key codes.
+        var direction=e.keyCode===427||e.keyCode===33||e.key==='ChannelUp'?1:e.keyCode===428||e.keyCode===34||e.key==='ChannelDown'?-1:0;
+        // CH+/- switch channels only in the player; on the channel list PageUp/PageDown keep their default (scrolling).
+        if(direction&&screen!=='player')return false;
         if(direction){
-            e.preventDefault();clearChannelNumber();var items=TVModel.channels(channelItems,prefs,channelMode),id=pendingTune||(screen==='player'?selectedChannel:focusedChannel),index=items.findIndex(function(c){return c.id===id;});
+            e.preventDefault();clearChannelNumber();var items=tunableChannels(),id=pendingTune||selectedChannel,index=items.findIndex(function(c){return c.id===id;});
             if(items.length)tuneChannel(items[(Math.max(0,index)+direction+items.length)%items.length].id);return true;
         }
         var digit=/^[0-9]$/.test(e.key||'')?e.key:e.keyCode>=48&&e.keyCode<=57?String(e.keyCode-48):e.keyCode>=96&&e.keyCode<=105?String(e.keyCode-96):null;
         if(digit!==null){e.preventDefault();if(e.repeat)return true;channelDigits=(channelDigits.length>=4?'':channelDigits)+digit;$('channel-number-entry').textContent=channelDigits;$('channel-number-entry').hidden=false;clearTimeout(numberTimer);numberTimer=setTimeout(commitChannelNumber,1500);return true;}
         if(channelDigits&&e.keyCode===13){e.preventDefault();commitChannelNumber();return true;}return false;
     }
-    function begin(id, start, end) { playerReturn='channels';playlist=null;return run(function () { selectedChannel = id; focusedChannel = id; return play(id, start, undefined, end); }); }
+    // Hidden channels never play, whatever asks for them (number keys, guide, a pending tune).
+    function begin(id, start, end) { if(prefs.hidden.indexOf(id)>=0)return Promise.resolve(); playerReturn='channels';playlist=null;return run(function () { selectedChannel = id; focusedChannel = id; return play(id, start, undefined, end); }); }
     function chooseQuality(mode) {
         if (!player) return; qualityMode = mode; player.configure({abr: {enabled: mode === 'auto'}});
         if (mode !== 'auto') {
@@ -558,7 +633,8 @@
             current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie").replace(/\u2026$/,''); playerConnecting=true; busySpinner();
             $('player-controls').classList.toggle('vod',!!vod);$('vod-time').hidden=!vod;$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(0),duration:T('player.unknownTime')});
             if (!navigator.requestMediaKeySystemAccess) throw new Error('WIDEVINE_REQUIRED');
-            return navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
+            // The CDM can stop answering (e.g. while the app is in the background); a start must not wait for it forever.
+            return Promise.race([navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]), new Promise(function (resolve, reject) { setTimeout(reject, 10000); })]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
         }).then(function () { if (current !== generation) throw new Error('STALE_REQUEST'); return rpc('play', {id: id, kind:vod?'vod':'tv',widevine: true, userAgent: navigator.userAgent}); }).then(function (data) {
             if (current !== generation) throw new Error('STALE_REQUEST');
             shaka.polyfill.installAll(); if (!shaka.Player.isBrowserSupported()) throw new Error('UNSUPPORTED_STREAM'); licenseError = '';
@@ -721,7 +797,7 @@
     }
     function guideStatusNode(busy){var node=$('guide-status');node.classList.toggle('working',!!busy);return node;}
     function openGuide() {
-        if (!$('guide').hidden) return; guideReturn = screen; guideChannel = screen === 'player' ? selectedChannel : focusedChannel; var highlighted=document.querySelector('.channel-card:focus');if(screen==='channels'&&highlighted)guideChannel=highlighted.dataset.channel; guideDate = day(netiaNow() || Date.now()); $('guide-search').value = ''; var c = channel(guideChannel); setGuideLogo(c); $('guide').hidden = false; closeModal(false); reveal(); loadGuide();
+        if (!$('guide').hidden) return; guideReturn = screen; guideChannel = screen === 'player' ? selectedChannel : focusedChannel; var highlighted=document.querySelector('.channel-card:focus');if(screen==='channels'&&highlighted)guideChannel=highlighted.dataset.channel; if(prefs.hidden.indexOf(guideChannel)>=0){var shown=TVModel.channels(channelItems,prefs,'all')[0];guideChannel=shown?shown.id:null;} guideDate = day(netiaNow() || Date.now()); $('guide-search').value = ''; var c = channel(guideChannel); setGuideLogo(c); $('guide').hidden = false; closeModal(false); reveal(); loadGuide();
     }
     function closeGuide() { if ($('guide').hidden) return; guideGeneration++; cancelAnimationFrame(guideWheelFrame); guideWheelFrame = 0; $('guide').hidden = true; if (guideReturn === 'player') { $('player-guide').focus(); reveal(); } else focusChannel(); }
     function guideDateLabel(date) {
@@ -1070,7 +1146,7 @@
     function cancelLogin() { clearLogin(); show('login'); }
     // manual: a rejected automated attempt is not repeated automatically; the form is filled and the user submits it.
     function officialLogin(retry, injected, fresh, manual) {
-        clearLogin(); var attempt = {},phase='frame'; pendingLogin = attempt; show('web-login');loginStage(T("text.odczyt_zaszyfrowanego_konta_i_zapisanej_sesji")); $('splash').hidden = true;
+        clearLogin(); var attempt = {},phase='frame'; pendingLogin = attempt; show('web-login');loginStage(T("text.odczyt_zaszyfrowanego_konta_i_zapisanej_sesji"));
         // A session imported from a computer browser (webOS 4 cannot run the official form) replaces the frame entirely.
         var imported=null;
         return rpc('importedSession').catch(function(){return null;}).then(function(session){imported=session&&typeof session==='object'&&session.session?session:null;
@@ -1082,7 +1158,9 @@
             if (attempt !== pendingLogin) return;
             if(!injected&&retry!==false)$('frame-remember').checked=!!(saved&&saved.remember);
             if(imported)return imported;
-            return NetiaFrameLogin.open(saved, loginStage, true, manual);
+            // With a remembered password the official form works behind the splash and is shown only if it needs the user.
+            var unveil=function(){if(attempt===pendingLogin)$('splash').hidden=true;};if(!(saved&&saved.password)||manual)unveil();
+            return NetiaFrameLogin.open(saved, loginStage, true, manual, unveil);
         }).then(function (session) {
             if (!session || attempt !== pendingLogin) return;
             var data = Object.assign({}, session, session.credentials || {}, {remember:$('frame-remember').checked}); delete data.credentials;
@@ -1111,12 +1189,12 @@
     $('logout-button').onclick = function () { run(function () { return stop().then(function () { return Promise.all([rpc('logout'),NetiaFrameLogin.forget(),NetiosData.clear()].map(function(task){return task.then(function(){return null;},function(error){return error;});})); }).then(function (errors) { $('username').value = ''; $('channel-list').textContent = ''; $('profile-list').textContent = ''; channelItems = []; channelNodes = Object.create(null); nowPrograms = {}; $('remember-account').checked = false; saveAfterLogin = false; preferenceKey = null;libraryCache=Object.create(null);artworkQueue=[]; prefs = TVModel.preferences(); selectedChannel = focusedChannel = null; show('login'); $('unlock-area').hidden = true;var error=errors.find(function(item){return !!item;});if(error)throw error; }); }); };
     $('favorite-shortcut').onclick=function(){var id=focusedChannel;togglePreference('favorites');if(channelNodes[id]&&channelNodes[id].isConnected)focusControl(channelNodes[id]);};
     $('watch-button').onclick = function () { if (focusedChannel) begin(focusedChannel); };
-    ['all', 'favorites', 'hidden'].forEach(function (mode) { $('filter-' + mode).onclick = function () { channelMode=mode;prefs.sort=prefs.channelSort[mode];$('channel-sort').value=prefs.sort;$('channel-sort').mdiUpdate();renderChannels(); }; });
+    ['all', 'favorites', 'hidden'].forEach(function (mode) { function apply(){channelMode=mode;prefs.sort=prefs.channelSort[mode];$('channel-sort').value=prefs.sort;$('channel-sort').mdiUpdate();renderChannels();} $('filter-' + mode).onclick = function () { if(mode!=='hidden'){hiddenUnlocked=false;apply();}else withHiddenUnlocked(apply); }; });
     $('channel-options').onclick = openChannelMenu; $('menu-close').onclick = function () { stop().then(function(){window.close();}).catch(notice); };
     $('menu-profiles').onclick=function(){closeModal(false);run(function(){return stop().then(function(){return profiles(true);});});};
     $('menu-favorite').onclick = function () { togglePreference('favorites'); closeModal(); };
     $('menu-hide').onclick = function () { togglePreference('hidden'); closeModal(); };
-    $('menu-restore').onclick = function () { prefs.hidden = []; savePreferences(); renderChannels(); closeModal(); };
+    $('menu-restore').onclick = function () { withHiddenUnlocked(function () { prefs.hidden = []; savePreferences(); renderChannels(); closeModal(); }); };
     $('refresh-button').onclick = function () { closeModal(false); run(function () { return channels('refresh'); }); };
     $('back-button').onclick = function () { backToChannels().catch(notice); }; $('settings-button').onclick = settings; $('close-settings').onclick = function () { closeModal(); };
     $('previous-button').onclick=function(){skip(-1);};$('next-button').onclick=function(){skip(1);};
@@ -1164,10 +1242,12 @@
     [-1, 1].forEach(function (offset) { $(offset < 0 ? 'guide-prev' : 'guide-next').onclick = function () { guideDate = day(Date.parse(guideDate + 'T12:00:00Z') + offset * 86400000); loadGuide(); }; });
     var pointerFocusing=false,pointerChannel=null,pointerX=null,pointerY=null,scrollCancelledClick=false;
     document.addEventListener('mousedown',function(e){
-        if(e.button===0&&e.target.closest&&e.target.closest('button')){scrollCancelledClick=false;pointerChannel=null;var card=e.target.closest('.channel-card');if(card){e.preventDefault();pointerFocusing=true;try{card.focus({preventScroll:true});}finally{pointerFocusing=false;}}}
+        if(e.button===0&&e.target.closest&&e.target.closest('button')){scrollCancelledClick=false;pointerChannel=null;var card=e.target.closest('.channel-card');if(card){e.preventDefault();pointerFocusing=true;try{card.focus({preventScroll:true});}finally{pointerFocusing=false;}if(screen==='channels'&&!modal&&$('guide').hidden)holdChannel(card,true);}}
         else if(e.button!==0&&e.target.closest&&e.target.closest('button'))e.preventDefault();
     },true);
     document.addEventListener('keydown',function(e){
+        // The splash can cover a remembered sign-in; only Back (cancel) reaches the controls hidden under it.
+        if(!$('splash').hidden&&[461,27].indexOf(e.keyCode)<0){e.preventDefault();e.stopImmediatePropagation();return;}
         scrollCancelledClick=false;Scrolling.releasePointer();if(channelHeroFrame){cancelAnimationFrame(channelHeroFrame);channelHeroFrame=0;if(screen==='channels'&&!modal)hero();}
         if(pointerChannel&&screen==='channels'&&!modal&&$('guide').hidden&&[13,37,38,39,40].indexOf(e.keyCode)>=0){pointerFocusing=true;try{pointerChannel.focus({preventScroll:true});}finally{pointerFocusing=false;}}
         pointerChannel=null;
@@ -1177,11 +1257,14 @@
         if(screen==='player'&&$('guide').hidden){e.preventDefault();e.stopPropagation();}
     },{capture:true,passive:false});
     document.addEventListener('click',function(e){
+        if(trustedClickBlocked&&e.isTrusted){e.preventDefault();e.stopImmediatePropagation();return;}
         if(e.target.closest&&e.target.closest('button')&&(e.button!==0||scrollCancelledClick)){e.preventDefault();e.stopImmediatePropagation();}
     },true);
     document.addEventListener('mousemove',function(e){
         if(screen==='player')reveal();
         if(e.clientX===pointerX&&e.clientY===pointerY)return;pointerX=e.clientX;pointerY=e.clientY;
+        // Holding OK is a brake: the Magic Remote pointer drifting meanwhile never moves focus off the held channel.
+        if(channelOK)return;
         if(Scrolling.pointerHeld(e))return;
         // While a search field is being typed into, the Magic Remote pointer passes over tiles on its way to the LG keyboard;
         // taking focus from the field would close the keyboard, so hover never moves focus then.
@@ -1195,8 +1278,20 @@
         pointerChannel=null;if(card===document.activeElement)return;
         pointerFocusing=true;try{card.focus({preventScroll:true});}finally{pointerFocusing=false;}
     });
-    var channelOK=null,channelOKTimer;
+    var channelOK=null,channelOKTimer,trustedClickBlocked=false;
     function cancelChannelOK(){clearTimeout(channelOKTimer);channelOK=null;}
+    // OK held for 0.5 s on a channel opens its Options, from the remote's OK key or the Magic Remote pointer (mouse events).
+    function holdChannel(target,pointer){
+        var press={target:target,held:false,pointer:pointer};channelOK=press;
+        channelOKTimer=setTimeout(function(){if(channelOK!==press)return;press.held=true;focusedChannel=press.target.dataset.channel;openChannelMenu();},500);
+    }
+    // A pointer press ends here: a short one plays the channel it started on, wherever the pointer drifted; the browser's
+    // own click (which would land on another card, or after the Options opened) is dropped.
+    document.addEventListener('mouseup',function(e){
+        if(e.button!==0||!channelOK||!channelOK.pointer)return;
+        var press=channelOK;cancelChannelOK();trustedClickBlocked=true;setTimeout(function(){trustedClickBlocked=false;},0);
+        if(!press.held&&screen==='channels'&&!modal&&$('guide').hidden&&!scrollCancelledClick)press.target.click();
+    },true);
     document.addEventListener('keyup',function(e){
         if(e.keyCode!==13&&e.key!=='Enter'||!channelOK)return;
         e.preventDefault();var press=channelOK;cancelChannelOK();
@@ -1210,13 +1305,17 @@
         var active=document.activeElement,search=active.matches('input[type="search"]');
         if(search&&(e.keyCode===13||e.key==='Enter')){e.preventDefault();editSearch(active);return;}
         if(search&&(e.keyCode===461||e.key==='Escape')){e.preventDefault();active.readOnly=true;focusControl($(active.id==='library-search'?'library-back':'guide-next'));return;}
+        if(modal==='pin-dialog'){
+            var pinKey=e.keyCode>=48&&e.keyCode<=57?e.keyCode-48:e.keyCode>=96&&e.keyCode<=105?e.keyCode-96:null;
+            if(pinKey!==null){e.preventDefault();if(!e.repeat)pinDigit(String(pinKey));return;}
+            if(e.keyCode===8){e.preventDefault();pinBack();return;}
+        }
         if(channelOK&&e.keyCode!==13&&e.key!=='Enter')cancelChannelOK();
         if (e.keyCode === 461 || e.key === 'Escape') { e.preventDefault();pendingTune=null;if(channelDigits){clearChannelNumber();return;}back(); return; }
         if(remoteChannelKey(e))return;
         if((e.keyCode===13||e.key==='Enter')&&(channelOK||screen==='channels'&&!modal&&$('guide').hidden&&document.activeElement.dataset.channel)){
             e.preventDefault();if(e.repeat||channelOK)return;
-            var press={target:document.activeElement,held:false};channelOK=press;
-            channelOKTimer=setTimeout(function(){if(channelOK!==press)return;press.held=true;focusedChannel=press.target.dataset.channel;openChannelMenu();},500);return;
+            holdChannel(document.activeElement,false);return;
         }
         var color=e.keyCode===403||e.key==='ColorF0Red'?'watch-button':e.keyCode===404||e.key==='ColorF1Green'?'guide-button':e.keyCode===405||e.key==='ColorF2Yellow'?'favorite-shortcut':null;
         if(color){if(screen==='channels'&&!modal&&$('guide').hidden){e.preventDefault();if(!e.repeat)$(color).click();}return;}
@@ -1261,7 +1360,7 @@
         if (best) { e.preventDefault(); focusControl(best); if(!best.classList.contains('library-card')&&!best.dataset.channel) best.scrollIntoView({block: 'nearest'}); }
     });
     document.addEventListener('visibilitychange', function () {
-        if(document.hidden){cancelChannelOK();clearChannelNumber();pendingTune=null;closeGuide();if(screen==='player')backToChannels().catch(notice);}
+        if(document.hidden){hiddenUnlocked=false;if(modal==='pin-dialog')closeModal(false);if(channelMode==='hidden'&&prefs.hiddenPin)$('filter-all').click();cancelChannelOK();clearChannelNumber();pendingTune=null;closeGuide();if(screen==='player')backToChannels().catch(notice);}
         else if(screen!=='login'&&screen!=='web-login')rpc('status').then(function(status){if(!status.loggedIn)return start();syncClock();refreshPrograms();}).catch(notice);
     });
     // Session keepalive every 5–15 min, randomized per call; configuration reloads only on Refresh.

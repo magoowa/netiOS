@@ -137,15 +137,22 @@ Provider.prototype.profiles = function () { return this.rpc('auth', 'getProfiles
 Provider.prototype.select = function (id) {
     var self = this;
     if (typeof id !== 'string' || !id || id.length > 128) return Promise.reject(new Error('INVALID_PROFILE'));
-    self.generation++; self.channels = []; self.vodCategories=null;self.vodMedia=null;self.catalogScans=null;self.rootCatalogs=null;self.playing = null;
+    self.generation++; self.channels = []; self.vodCategories=null;self.vodMedia=null;self.catalogScans=null;self.rootCatalogs=null;self.playing = null;self.programsProgress = null;
     return self.profiles().then(function (profiles) {
         if (!profiles.some(function (p) { return p.id === id; })) throw new Error('INVALID_PROFILE');
         return self.rpc('auth', 'setSessionProfile', {profileId: id});
-    }).then(function (auth) { self.importSession(auth); return true; });
+    }).then(function (auth) { self.importSession(auth); self.prefetch(); return true; });
+};
+// Right after a profile is chosen the channel list and what is on now are fetched here, while the app is still loading
+// the profile, so the guide is (nearly) ready when the channel grid appears.
+Provider.prototype.prefetch = function () {
+    var self = this;
+    self.list().then(function () { return self.programs(); }).catch(function () {});
 };
 Provider.prototype.list = function () {
     var self = this, all = [], offset = 0, generation = self.generation;
     if (!self.auth || !self.auth.profileId) return Promise.reject(new Error('PROFILE_REQUIRED'));
+    if (self.channelLoad && self.channelLoad.generation === generation) return self.channelLoad;
     self.channels = [];
     function access(candidates) {
         var granted = Object.create(null), index = 0;
@@ -182,7 +189,7 @@ Provider.prototype.list = function () {
         });
     }
     var loading = page();
-    self.channelLoad = loading; loading.then(function () { if (self.channelLoad === loading) self.channelLoad = null; }, function () { if (self.channelLoad === loading) self.channelLoad = null; });
+    loading.generation = generation; self.channelLoad = loading; loading.then(function () { if (self.channelLoad === loading) self.channelLoad = null; }, function () { if (self.channelLoad === loading) self.channelLoad = null; });
     return loading;
 };
 // The app shows its saved channel list at once and asks for Netia's list in the background, so a guide or playback
@@ -323,6 +330,17 @@ Provider.prototype.catalogArtwork = function(kind,id) {
 Provider.prototype.programs = function (id, date) {
     var self = this, generation = self.generation, result = [], offset = 0;
     if (!self.auth || !self.auth.profileId) return Promise.reject(new Error('PROFILE_REQUIRED'));
+    if (id === undefined && date === undefined) {
+        // What is on now for every channel: a load still running or under 45 s old (the profile prefetch) is reused, and
+        // a request that arrives before this session knows the channels waits for them instead of answering with nothing.
+        var recent = self.nowLoad;
+        if (recent && recent.generation === generation && (!recent.at || Date.now() - recent.at < 45000)) return recent;
+        if (self.channelLoad || !self.channels.length) return (self.channelLoad || self.list()).then(function () {
+            if (generation !== self.generation) throw new Error('STALE_REQUEST');
+            if (self.channelLoad || !self.channels.length) return [];
+            return self.programs();
+        });
+    }
     var selected = id === undefined ? self.channels : self.channels.filter(function (c) { return c.id === id; });
     if (id !== undefined && !selected.length) return self.knownChannel(id).then(function (channel) { if (!channel) throw new Error('NOT_ENTITLED'); return self.programs(id, date); });
     if (date !== undefined && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) return Promise.reject(new Error('INVALID_DATE'));
@@ -345,7 +363,12 @@ Provider.prototype.programs = function (id, date) {
             return batch();
         });
     }
-    return batch().then(function (items) { return items.sort(function (a, b) { return a.start - b.start || compare(a.channelTitle, b.channelTitle); }); });
+    var loading = batch().then(function (items) { return items.sort(function (a, b) { return a.start - b.start || compare(a.channelTitle, b.channelTitle); }); });
+    if (id === undefined && date === undefined) {
+        loading.generation = generation; self.nowLoad = loading;
+        loading.then(function () { loading.at = Date.now(); }, function () { if (self.nowLoad === loading) self.nowLoad = null; });
+    }
+    return loading;
 };
 Provider.prototype.play = function (id, capabilities, kind) {
     var self = this, channel = kind==='vod' ? self.vodMedia && self.vodMedia[id] : self.channels.find(function (c) { return c.id === id; }), generation = self.generation;

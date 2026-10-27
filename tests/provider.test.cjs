@@ -371,3 +371,13 @@ test('guide and playback requests that arrive before the channel list wait for i
  await assert.rejects(p.play('synthetic-missing',{widevine:true,userAgent:'x'}),/NOT_ENTITLED/);assert.equal(loads,1,'A loaded list is not fetched again');
  p.channels=[];p.list=async()=>{loads++;p.channels=[{id:'synthetic-c1'}];return [];};await assert.rejects(p.programs('synthetic-missing'),/NOT_ENTITLED/);assert.equal(loads,2,'An empty session loads the list once before deciding');
 });
+test('what is on now waits for the channel list on a cold service and one load serves the prefetch and the app',async()=>{
+ const calls=[];const p=new Provider(async(ns,req)=>{calls.push(req.method);return {result:Object.fromEntries(req.params.channelIds.map(id=>[id,[{id:'show',title:'Synthetic',startTime:'2026-10-23T08:00:00Z',endTime:'2026-10-23T09:00:00Z'}]]))};});
+ p.importSession(auth);let loads=0,release;
+ p.list=function(){loads++;const pending=new Promise(resolve=>{release=()=>{p.channels=[{id:'synthetic-c1',title:'One'},{id:'synthetic-c2',title:'Two'}];resolve([]);};});p.channelLoad=pending;pending.then(()=>{p.channelLoad=null;});return pending;};
+ const early=p.programs(),second=p.programs();assert.equal(loads,1);release();
+ assert.equal((await early).length,2,'The app gets programmes, not an empty answer');assert.equal((await second).length,2);
+ assert.equal(calls.length,1,'Concurrent requests share one EPG load');
+ await p.programs();assert.equal(calls.length,1,'A load under 45 s old is reused');
+ p.nowLoad.at=Date.now()-60000;await p.programs();assert.equal(calls.length,2,'An older load is refreshed');
+});

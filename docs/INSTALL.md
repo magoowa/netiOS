@@ -28,7 +28,7 @@ Na webOS 5 i nowszych logowanie odbywa się bezpośrednio na telewizorze, w ofic
 
 ## 2. Pobranie
 
-Z zakładki [Releases](https://github.com/magoowa/netiOS/releases) pobierz `netiOS-0.6.0-installer.zip` i rozpakuj go, np. do `C:\netiOS-0.6.0`. W środku jest paczka `com.netiago.webos_0.6.0_all.ipk` i narzędzia:
+Z zakładki [Releases](https://github.com/magoowa/netiOS/releases) pobierz `netiOS-0.6.4-installer.zip` i rozpakuj go, np. do `C:\netiOS-0.6.4`. W środku jest paczka `com.netiago.webos_0.6.4_all.ipk` i narzędzia:
 
 | Plik | Do czego |
 | --- | --- |
@@ -47,7 +47,7 @@ Z zakładki [Releases](https://github.com/magoowa/netiOS/releases) pobierz `neti
 
 1. Zainstaluj Glasshouse według jego [instrukcji instalacji](https://rorygallagher2024.github.io/glasshouse/install/) (`./deploy.sh <adres-IP-TV>` z katalogu `server/`). Na webOS 4 użyj wersji 0.118.0: pobierz ją z [wydania v0.118.0](https://github.com/rorygallagher2024/glasshouse/releases/tag/v0.118.0) albo po sklonowaniu repozytorium przełącz się na nią poleceniem `git checkout v0.118.0`.
 2. Otwórz w przeglądarce `http://<adres-IP-TV>:8080/`.
-3. W zakładce **Apps** włącz **Install app from a URL or file**, wybierz **Upload .ipk** i wskaż `com.netiago.webos_0.6.0_all.ipk`. Szczegóły są w [opisie zakładki Apps](https://rorygallagher2024.github.io/glasshouse/dashboard/apps/).
+3. W zakładce **Apps** włącz **Install app from a URL or file**, wybierz **Upload .ipk** i wskaż `com.netiago.webos_0.6.4_all.ipk`. Szczegóły są w [opisie zakładki Apps](https://rorygallagher2024.github.io/glasshouse/dashboard/apps/).
 
 ### Alternatywnie: instalator netiOS
 
@@ -56,9 +56,9 @@ Kliknij dwukrotnie `Install-netiOS.cmd`. Instalator:
 1. wyszukuje telewizory LG w sieci i pokazuje listę: wpisz numer telewizora albo jego adres IP;
 2. proponuje paczkę leżącą obok: naciśnij Enter;
 3. łączy się z telewizorem (SSH, a gdy jest wyłączone, telnet), przesyła paczkę, instaluje ją i czeka na potwierdzenie od systemu;
-4. kończy komunikatem `NETIOS_INSTALLED 0.6.0` i uruchamia netiOS.
+4. kończy komunikatem `NETIOS_INSTALLED 0.6.4` i uruchamia netiOS.
 
-![Instalator netiOS w konsoli Windows: wybór telewizora, instalacja przez telnet i potwierdzenie NETIOS_INSTALLED 0.6.0](screenshots/install-console.png)
+![Instalator netiOS w konsoli Windows: wybór telewizora, instalacja przez telnet i potwierdzenie NETIOS_INSTALLED 0.6.4](screenshots/install-console.png)
 
 *Prawdziwy przebieg instalatora; nazwa i adres telewizora zastąpione przykładowymi.*
 

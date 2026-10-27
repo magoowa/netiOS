@@ -65,3 +65,15 @@ test('channel logos are trimmed to their visible pixels and cached under a trim 
  assert.match(await f.api.source(image,360,true),/^data:image\/webp/);assert.deepEqual(cropped,[100,50,200,100],'Only the opaque area is kept');
  assert(f.records.has(image+'?netios-width=360&netios-trim=1'));
 });
+test('webOS 4 (no AbortController, no createImageBitmap) still trims logos through an image element and caches them',async()=>{
+ const f=fixture();delete f.context.AbortController;let cropped=null;
+ // The fixture's context is already evaluated, so a fresh one without AbortController is built the same way.
+ const context=Object.assign({},f.context);delete context.AbortController;delete context.NetiosImages;delete context.NetiosData;context.window=context;
+ context.URL=Object.assign(function(...a){return new URL(...a);},{createObjectURL:()=>'blob:synthetic',revokeObjectURL:()=>{}});
+ context.Image=class{set src(value){this.naturalWidth=2000;this.naturalHeight=1125;setTimeout(()=>this.onload());}};
+ const pixels=(w,h)=>{const data=new Uint8ClampedArray(w*h*4);for(let y=50;y<150;y++)for(let x=100;x<300;x++)data[(y*w+x)*4+3]=255;return data;};
+ context.document={createElement:()=>({width:0,height:0,getContext:()=>({drawImage:(...a)=>{if(a.length===9)cropped=[a[1],a[2],a[3],a[4]];},getImageData:(x,y,w,h)=>({data:pixels(w,h)})}),toBlob:callback=>callback(new Blob(['trimmed'],{type:'image/webp'}))})};
+ vm.runInNewContext(source,context);
+ assert.match(await context.NetiosImages.source(image,360,true),/^data:image\/webp/);assert.deepEqual(cropped,[100,50,200,100]);
+ assert(f.records.has(image+'?netios-width=360&netios-trim=1'),'Cached, so the next launch does not download it');
+});

@@ -30,13 +30,18 @@
                 frame.src = 'https://go.netia.pl/login';
             });
         },
-        open: function (credentials, status, interactive, manual) {
+        open: function (credentials, status, interactive, manual, revealed) {
             cancel();
             return new Promise(function (resolve, reject) {
                 // autoSubmitted spans documents: one automated submit per open, later attempts are the user's.
                 var frame = document.getElementById('netia-login'), prepared = null, autoSubmitted = false, filled = false, finished = false, lastError = null, challenge = false, captchaSince = 0;
                 var view=document.getElementById('web-login');if(view&&view.classList)view.classList.remove('form-ready');
-                var captured = null, formReady=false, scanned=0;status(T("text.odczyt_wersji_systemu_i_przygotowanie_logowania"));
+                var captured = null, formReady=false, scanned=0, openedAt=Date.now(), submittedAt=0;status(T("text.odczyt_wersji_systemu_i_przygotowanie_logowania"));
+                // A remembered account signs in behind the app's own screen; the form appears only when the user is needed:
+                // a challenge, a rejected attempt (manual), or no session 20 s after the automated submit (30 s overall).
+                var quiet = !!(credentials && credentials.password && !manual);
+                var shown = false;
+                function reveal() { if (shown) return; shown = true; if (view && view.classList) view.classList.add('form-ready'); if (typeof revealed === 'function') revealed(); }
                 var timer = setInterval(tick, 10), timeout = setTimeout(function () { finish(new Error('LOGIN_TIMEOUT')); }, credentials || interactive ? 300000 : 15000);
                 active = finish;
                 function finish(error, data) {
@@ -57,9 +62,10 @@
                         }
                         if(Date.now()-scanned<100)return;scanned=Date.now();
                         w.localStorage.removeItem('credentials');
-                        var frames=Array.prototype.slice.call(doc.querySelectorAll('iframe'));if(view&&view.classList&&frames.some(function(node){var r=node.getBoundingClientRect();return r.width>200&&r.height>80;}))view.classList.add('form-ready');
+                        var frames=Array.prototype.slice.call(doc.querySelectorAll('iframe'));if(frames.some(function(node){var r=node.getBoundingClientRect&&node.getBoundingClientRect();return r&&r.width>200&&r.height>80;}))reveal();
                         // A visible checkbox or image challenge belongs to the user; automation stops for this attempt.
-                        if (!challenge && frames.some(visibleChallenge)) { challenge = true; status(T('login.challenge')); }
+                        if (!challenge && frames.some(visibleChallenge)) { challenge = true; reveal(); status(T('login.challenge')); }
+                        if (quiet && (submittedAt ? Date.now() - submittedAt > 20000 : Date.now() - openedAt > 30000)) { quiet = false; reveal(); status(T('login.manualSubmit')); }
                         var session = readCookie(doc, 'user-session'), recognition = readCookie(doc, 'user-recognition');
                         if (session && recognition && Number.isFinite(session.keyExpirationTime) && session.keyExpirationTime * 1000 > Date.now()) return finish(null, {session: session, clientId: recognition.clientId, deviceId: recognition.deviceId});
                         var failure = doc.body && doc.body.textContent.match(/podając kod:\s*\(?(\d{4,6})[:)]/i);
@@ -69,7 +75,7 @@
                         if (decline && decline.getBoundingClientRect().height) { status(T("text.odrzucanie_opcjonalnych_zgod_partnerow"));decline.click(); return; }
                         var username = doc.querySelector('input[name="email"]'), password = doc.querySelector('input[name="password"]');
                         var submit = buttons.find(function (b) { return b.textContent.trim() === 'Zaloguj się'; });
-                        if(username&&password&&!formReady){formReady=true;if(view&&view.classList)view.classList.add('form-ready');status(challenge?T('login.challenge'):credentials&&credentials.password?T(manual||autoSubmitted?'login.manualSubmit':"text.przywracanie_zapamietanego_konta"):credentials?T('login.usernameSaved'):T("text.wpisz_login_i_haslo_klawiatura_telewizora"));}
+                        if(username&&password&&!formReady){formReady=true;if(!quiet)reveal();status(challenge?T('login.challenge'):credentials&&credentials.password?T(manual||autoSubmitted?'login.manualSubmit':"text.przywracanie_zapamietanego_konta"):credentials?T('login.usernameSaved'):T("text.wpisz_login_i_haslo_klawiatura_telewizora"));}
                         if (interactive && username && password && !username.netiaRememberWatch) {
                             username.netiaRememberWatch = true;
                             var capture = function () { if (!finished && username.value && password.value) captured = {username: username.value, password: password.value}; };
@@ -79,7 +85,7 @@
                         if (!credentials && !interactive && username && password && doc.readyState === 'complete' && w.next && w.next.router && w.next.router.isReady) return finish(new Error('LOGIN_REQUIRED'));
                         if (credentials && username && password && doc.readyState === 'complete' && w.next && w.next.router && w.next.router.isReady) {
                             if(filled){
-                                if(credentials.password&&!manual&&!autoSubmitted&&!challenge&&submit&&!submit.disabled&&captchaReady(w,doc)){autoSubmitted=true;submit.click();status(T("text.logowanie_w_serwisie_netia_go"));}
+                                if(credentials.password&&!manual&&!autoSubmitted&&!challenge&&submit&&!submit.disabled&&captchaReady(w,doc)){autoSubmitted=true;submittedAt=Date.now();submit.click();status(T("text.logowanie_w_serwisie_netia_go"));}
                                 return;
                             }
                             var setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;

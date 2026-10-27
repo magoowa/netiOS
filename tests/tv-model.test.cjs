@@ -146,3 +146,8 @@ test('live |< and >| jump between programme starts inside the buffer, with the b
  assert.equal(m.segmentPosition([],window,t+90*min,1),120*60);
  assert.equal(m.segmentPosition(programs,null,t,1),null);
 });
+test('the Hidden folder PIN keeps only a hash-shaped value',()=>{
+ const m=require('../app/tv-model.js');
+ assert.equal(m.preferences({hiddenPin:'0a1b2c3d'}).hiddenPin,'0a1b2c3d');
+ for(const value of ['1234','0A1B2C3D',12345678,null,undefined])assert.equal(m.preferences({hiddenPin:value}).hiddenPin,null);
+});

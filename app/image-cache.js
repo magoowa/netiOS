@@ -15,6 +15,7 @@
     }
     function open() {
         // Sizes come from a saved index; only entries missing from it are read, so startup does not open every image.
+        if (!disk && typeof caches === 'undefined') disk = Promise.reject(new Error('CACHE_UNAVAILABLE'));
         if (!disk) disk = caches.open('netios-images-v1').then(function (cache) {
             var index = readIndex(), missing = false;
             return cache.keys().then(function (keys) {
@@ -49,13 +50,27 @@
     // first paint stalls scrolling for hundreds of milliseconds. Images are shrunk once to the requested width and kept.
     // Channel logos are drawn inside a 16:9 canvas with transparent margins of varying size; trim removes them so every
     // logo can be sized by its visible shape.
+    // createImageBitmap is the fast path; where it is missing or refuses the file, an <img> decodes it instead.
+    function decode(blob) {
+        var element = function () {
+            return new Promise(function (resolve, reject) {
+                var image = new Image(), address = URL.createObjectURL(blob);
+                image.onload = function () { URL.revokeObjectURL(address); resolve({width: image.naturalWidth, height: image.naturalHeight, source: image}); };
+                image.onerror = function () { URL.revokeObjectURL(address); reject(new Error('IMAGE_DECODE')); };
+                image.src = address;
+            });
+        };
+        if (typeof createImageBitmap !== 'function') return element();
+        return createImageBitmap(blob).then(function (bitmap) { return {width: bitmap.width, height: bitmap.height, source: bitmap, close: function () { if (bitmap.close) bitmap.close(); }}; }, element);
+    }
     function shrink(blob, width, trim) {
-        if (!width && !trim || typeof createImageBitmap !== 'function') return Promise.resolve(blob);
-        return createImageBitmap(blob).then(function (bitmap) {
+        if (!width && !trim) return Promise.resolve(blob);
+        return decode(blob).then(function (decoded) {
+            var bitmap = {width: decoded.width, height: decoded.height, close: decoded.close}, source = decoded.source;
             if (!trim && bitmap.width <= width) { if (bitmap.close) bitmap.close(); return blob; }
             var scale = width ? Math.min(1, width / bitmap.width) : 1, canvas = document.createElement('canvas'), context;
             canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-            context = canvas.getContext('2d'); context.imageSmoothingQuality = 'high'; context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); if (bitmap.close) bitmap.close();
+            context = canvas.getContext('2d'); context.imageSmoothingQuality = 'high'; context.drawImage(source, 0, 0, canvas.width, canvas.height); if (bitmap.close) bitmap.close();
             if (trim) {
                 var pixels = context.getImageData(0, 0, canvas.width, canvas.height).data, left = canvas.width, top = canvas.height, right = -1, bottom = -1, x, y;
                 for (y = 0; y < canvas.height; y++) for (x = 0; x < canvas.width; x++) if (pixels[(y * canvas.width + x) * 4 + 3] > 8) { if (x < left) left = x; if (x > right) right = x; if (y < top) top = y; bottom = y; }
@@ -73,11 +88,14 @@
         });
     }
     function fetchImage(url) {
-        var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 15000);
-        return fetch(url, {credentials: 'omit', signal: controller.signal}).then(function (reply) {
+        // Chromium before 66 (webOS 4) has no AbortController: there the timeout only stops waiting for the reply.
+        var controller = typeof AbortController === 'function' ? new AbortController() : null, timeout;
+        var expired = new Promise(function (resolve, reject) { timeout = setTimeout(function () { if (controller) controller.abort(); reject(new Error('IMAGE_TIMEOUT')); }, 15000); });
+        var options = {credentials: 'omit'}; if (controller) options.signal = controller.signal;
+        return Promise.race([fetch(url, options).then(function (reply) {
             if (!reply.ok || !/^image\//i.test(reply.headers.get('content-type') || '')) throw new Error('IMAGE_RESPONSE');
             return reply.blob();
-        }).then(function (blob) {
+        }), expired]).then(function (blob) {
             clearTimeout(timeout); if (blob.size > 4 * 1024 * 1024) throw new Error('IMAGE_SIZE'); return blob;
         }, function (error) { clearTimeout(timeout); throw error; });
     }
@@ -104,7 +122,8 @@
             var job = queue.shift(); active++;
             (function (job) {
                 download(job).then(function (src) {
-                    memory.set(job.key, src); if (memory.size > 64) memory.delete(memory.keys().next().value); job.resolve(src);
+                    // Enough for every channel logo, so switching profiles shows them without reading the cache again.
+                    memory.set(job.key, src); if (memory.size > 256) memory.delete(memory.keys().next().value); job.resolve(src);
                 }, function () { job.resolve(job.url); }).then(function () { pending.delete(job.key); active--; pump(); });
             }(job));
         }
@@ -120,7 +139,7 @@
     }, source: function (url, width, trim) {
         try {
             var parsed = new URL(url);
-            if (parsed.protocol !== 'https:' || !/(^|\.)pluscdn\.pl$/.test(parsed.hostname) || parsed.username || parsed.password || parsed.port && parsed.port !== '443' || typeof caches === 'undefined') return Promise.resolve(url);
+            if (parsed.protocol !== 'https:' || !/(^|\.)pluscdn\.pl$/.test(parsed.hostname) || parsed.username || parsed.password || parsed.port && parsed.port !== '443') return Promise.resolve(url);
         } catch (error) { return Promise.resolve(url); }
         var key = cacheKey(url, width, trim);
         if (memory.has(key)) return Promise.resolve(memory.get(key));

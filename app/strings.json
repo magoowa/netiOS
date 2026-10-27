@@ -249,5 +249,19 @@
   "player.nextIn": "Następny odcinek za {seconds} s",
   "epg.progress": "Pobieranie programu TV: {done} z {total} kanałów",
   "options.autonext": "Autoodtwarzanie odcinków",
-  "options.help.autonext": "W serialach i programach po zakończeniu odcinka odlicza 10 sekund i włącza następny. Można to też zmienić zębatką w odtwarzaczu."
+  "options.help.autonext": "W serialach i programach po zakończeniu odcinka odlicza 10 sekund i włącza następny. Można to też zmienić zębatką w odtwarzaczu.",
+  "pin.menuSet": "Zabezpiecz Ukryte PIN-em",
+  "pin.menuChange": "Zmień lub usuń PIN Ukrytych",
+  "options.help.pin": "Folder Ukryte i przywracanie ukrytych kanałów będą wymagały 4-cyfrowego PIN-u. PIN dotyczy tego profilu.",
+  "pin.unlockTitle": "Kanały ukryte",
+  "pin.setTitle": "Nowy PIN",
+  "pin.changeTitle": "Zmiana PIN-u",
+  "pin.current": "Podaj PIN folderu Ukryte.",
+  "pin.new": "Wpisz nowy 4-cyfrowy PIN.",
+  "pin.repeat": "Wpisz ten sam PIN jeszcze raz.",
+  "pin.wrong": "Nieprawidłowy PIN. Spróbuj ponownie.",
+  "pin.mismatch": "PIN-y się różnią. Wpisz nowy PIN od początku.",
+  "pin.remove": "Usuń PIN",
+  "pin.back": "Usuń ostatnią cyfrę",
+  "pin.close": "Anuluj"
 }

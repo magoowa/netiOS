@@ -261,21 +261,20 @@ p {
 #hero-title {
   font-size: 58px;
   font-weight: 700;
-  margin: 10px 0 14px;
+  margin: 6px 0 10px;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
 }
 
+/* Three justified lines; main.js shortens the text at a word boundary (line-clamp would cut a word on webOS 4 and 5). */
 #hero-description {
   font-size: 25px;
   line-height: 1.35;
-  height: 69px;
+  height: 102px;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  margin: 10px 0;
+  text-align: justify;
+  margin: 8px 0;
 }
 
 #hero-meta {
@@ -1186,8 +1185,9 @@ header {
   width: 250px;
 }
 
+/* 364 px leaves the channel grid exactly three rows of cards (3 × 160 + 2 × 20) with 8 px above and below. */
 #channel-hero {
-  height: 350px;
+  height: 364px;
   padding: 6px 12px 20px;
   padding-left: 0;
   padding-top: 0;
@@ -1342,7 +1342,7 @@ button:active,button[aria-pressed=true]:active {
   overflow-anchor: none;
   contain: layout paint;
   overscroll-behavior: contain;
-  padding: 8px 0 0;
+  padding: 8px 0;
   flex: 1;
   min-height: 0;
   height: auto;
@@ -2424,8 +2424,11 @@ header .app-version { margin: 4px 0 0; font-size: 20px; line-height: 24px; color
 /* Performance panel: above every screen and dialog, isolated so its once-a-second text update never relayouts the page. */
 #perf-overlay { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10002; padding: 6px 18px; border-radius: 12px; background: rgba(0,0,0,.78); color: #e3e6eb; font-size: 20px; line-height: 28px; font-variant-numeric: tabular-nums; white-space: pre; pointer-events: none; contain: layout paint style; }
 #perf-overlay[hidden] { display: none; }
-#channel-menu #perf-toggle[aria-pressed=true] { background: transparent; color: #b9bec4; }
-#channel-menu #perf-toggle:focus { background: #12343a; color: #fff; }
+/* Performance panel switch: a full-width row under the diagnostics list. */
+#diagnostics-dialog #perf-toggle { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 60px; margin: 14px 0 0; padding: 0 20px; }
+#diagnostics-dialog #perf-toggle .mdi-content>svg.mdi:first-child { width: 30px; }
+#diagnostics-dialog #perf-toggle[aria-pressed=true] { background: transparent; color: #b9bec4; }
+#diagnostics-dialog #perf-toggle:focus { background: #12343a; color: #fff; }
 
 /* Lists animate by moving their content on the compositor (see Scrolling.layered); the children keep their own layer so a
    motion starts without creating one. */
@@ -2497,7 +2500,9 @@ html { overflow: hidden; }
    the same columns, so tiles keep their size, channels stay six to a row and dialogs keep their columns. */
 .legacy #channel-scroll, .legacy #library-results { overflow-x: hidden; }
 .legacy .channel-grid, .legacy #library-grid { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; margin-right: -20px; }
-.legacy .channel-grid > * { width: calc(16.6667% - 20px); margin: 0 20px 20px 0; }
+/* Row spacing above each card (the grid pulled up by it), so the last row adds no gap at the bottom of the list. */
+.legacy .channel-grid { margin-top: -20px; }
+.legacy .channel-grid > * { width: calc(16.6667% - 20px); margin: 20px 20px 0 0; }
 .legacy #library-grid > * { width: calc(20% - 20px); margin: 0 20px 20px 0; }
 .legacy .channel-grid > .channel-category, .legacy #library-grid > .library-group { width: calc(100% - 20px); }
 .legacy .channel-toolbar { display: flex; }
@@ -2553,3 +2558,16 @@ html { overflow: hidden; }
 #epg-progress[hidden] { display: none; }
 .epg-bar { display: block; height: 6px; margin-top: 8px; border-radius: 3px; background: rgba(255,255,255,.14); overflow: hidden; }
 #epg-progress-fill { display: block; width: 0; height: 100%; background: #00b7c7; transition: width .3s ease-out; }
+
+/* PIN of the Hidden folder: four dots and a 3×4 keypad, centred like the Options menu. Flex with margins instead of grid
+   or gap, which webOS 4 (Chromium 53) and webOS 5 (Chromium 68) lack. */
+#pin-dialog { top: 50%; left: 50%; transform: translate(-50%,-50%); width: 520px; text-align: center; }
+#pin-prompt { margin: 24px 0 18px; font-size: 26px; color: #d6dade; }
+#pin-dots { display: flex; justify-content: center; margin-bottom: 26px; }
+#pin-dots span { width: 26px; height: 26px; margin: 0 12px; border-radius: 50%; border: 3px solid #8a9099; }
+#pin-dots span.filled { background: #00b7c7; border-color: #00b7c7; }
+#pin-keypad { display: flex; flex-wrap: wrap; justify-content: center; width: 420px; margin: 0 auto; }
+#pin-keypad .pin-key { display: flex; align-items: center; justify-content: center; width: 124px; height: 84px; margin: 8px; padding: 0; border-radius: 12px; font-size: 36px; }
+#pin-keypad .pin-spacer { visibility: hidden; }
+#pin-message { min-height: 30px; margin: 14px 0 0; color: #ffb4a8; }
+#pin-dialog>#pin-remove { text-align: center; margin-top: 12px; }

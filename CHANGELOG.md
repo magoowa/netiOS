@@ -1,5 +1,31 @@
 # Historia zmian netiOS
 
+## 0.6.4
+
+### Pilot i lista kanałów
+
+- CH+ i CH- znów przełączają kanały: pilot LG wysyła je jako PageUp/PageDown. Działają tylko w odtwarzaczu; na liście kanałów nie uruchamiają odtwarzania.
+- CH+/CH- w trakcie łączenia przerywa bieżący start zamiast czekać, a dostęp do DRM ma limit 10 s.
+- Długie przytrzymanie OK otwiera Opcje kanału także przy wskaźniku Magic Remote. Przytrzymanie działa jak hamulec: ruch wskaźnika nie przesuwa zaznaczenia.
+- Lista mieści dokładnie trzy pełne rzędy kafli, bez ucinania od góry i od dołu.
+- Opis audycji w górnym panelu ma trzy wyjustowane linie i kończy się pełnym słowem z wielokropkiem (także na webOS 4).
+- Panel wydajności przeniesiony z Opcji do Diagnostyki.
+
+### Logowanie
+
+- Przy zapamiętanym koncie oficjalny formularz Netii loguje w tle, za ekranem startowym. Formularz pojawia się tylko, gdy potrzebny jest użytkownik: przy weryfikacji (captcha), po odrzuconej próbie albo gdy sesja nie przyszła w ciągu 20 s od wysłania.
+- Po restarcie usługi przy otwartej aplikacji (zdarza się na webOS 4) aplikacja sama loguje się ponownie i wybiera profil.
+
+### Program TV i logotypy (wszystkie wersje webOS)
+
+- Kanały i bieżący program TV pobierają się już przy wyborze profilu, zanim pojawi się lista kanałów; pierwsze zapytanie aplikacji czeka na to pobieranie zamiast dostać pusty wynik.
+- Logotypy kanałów są przycinane i zapamiętywane we wspólnej pamięci dla wszystkich profili, także na webOS 4 (Chromium 53 nie ma `AbortController`, przez co logo były tam mniejsze i pobierane za każdym razem). W pamięci operacyjnej mieści się 256 obrazów.
+
+### Ukryte kanały
+
+- Folder Ukryte można zabezpieczyć 4-cyfrowym PIN-em (Opcje). PIN obowiązuje dla profilu i jest wymagany także przy „Pokaż wszystkie ukryte kanały”; folder zamyka się po wyjściu z niego, zmianie profilu i zejściu aplikacji w tło.
+- Ukrytych kanałów nie da się włączyć klawiszami numerycznymi, CH± ani z Programu TV.
+
 ## 0.6.0
 
 ### webOS 4

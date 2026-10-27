@@ -4,7 +4,7 @@
         value = value || {};
         function ids(items) { return Array.isArray(items) ? items.filter(function (id, i) { return typeof id === 'string' && id.length <= 128 && items.indexOf(id) === i; }).slice(0, 2000) : []; }
         var sorts=value.librarySort||{},channelSort=value.channelSort||{},allowed=['alphabetical','thematic','favorites-first'],legacy=allowed.indexOf(value.sort)>=0?value.sort:'alphabetical';
-        return {favorites: ids(value.favorites), hidden: ids(value.hidden), sort:legacy,channelSort:{all:allowed.indexOf(channelSort.all)>=0?channelSort.all:legacy,favorites:allowed.indexOf(channelSort.favorites)>=0?channelSort.favorites:legacy,hidden:allowed.indexOf(channelSort.hidden)>=0?channelSort.hidden:legacy}, librarySort:{series:sorts.series==='genres'?'genres':'alphabetical',shows:sorts.shows==='genres'?'genres':'alphabetical'}, subtitleSize: [50, 75, 100, 150, 200].indexOf(value.subtitleSize) >= 0 ? value.subtitleSize : 100};
+        return {favorites: ids(value.favorites), hidden: ids(value.hidden), sort:legacy,channelSort:{all:allowed.indexOf(channelSort.all)>=0?channelSort.all:legacy,favorites:allowed.indexOf(channelSort.favorites)>=0?channelSort.favorites:legacy,hidden:allowed.indexOf(channelSort.hidden)>=0?channelSort.hidden:legacy}, librarySort:{series:sorts.series==='genres'?'genres':'alphabetical',shows:sorts.shows==='genres'?'genres':'alphabetical'}, subtitleSize: [50, 75, 100, 150, 200].indexOf(value.subtitleSize) >= 0 ? value.subtitleSize : 100, hiddenPin: typeof value.hiddenPin === 'string' && /^[0-9a-f]{8}$/.test(value.hiddenPin) ? value.hiddenPin : null};
     }
     function channels(items, prefs, mode) {
         var compare=new Intl.Collator('pl',{sensitivity:'base',numeric:true}).compare;

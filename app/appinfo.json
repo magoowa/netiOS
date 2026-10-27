@@ -1,6 +1,6 @@
 {
   "id": "com.netiago.webos",
-  "version": "0.6.0",
+  "version": "0.6.4",
   "vendor": "netiOS",
   "type": "web",
   "main": "index.html",
