@@ -5,7 +5,7 @@ test('verified login honors the remember choice, cookie restoration retains it, 
  class Provider{clear(){this.auth=null;}acceptFrameSession(){this.auth={};return Promise.resolve();}rpc(ns,method){return Promise.resolve(method==='getUserPackSubscriptions'?[{pack:{name:'Synthetic pack'},accountId:'private-synthetic-id',session:{key:'private-synthetic-key'}}]:null);}}
  class Service{constructor(){this.activityManager={create(name,ready){ready({});},complete(activity,ready){ready();}};}register(name,handler){handlers[name]=handler;}}
  const account={load:async()=>saved,save:async value=>{writes.push(value);saved=value;},signOut:async()=>{saved={username:saved.username,remember:false};}};
- const context={Buffer,Promise,Date,setInterval(){return {unref(){}};},require(name){
+ const context={Buffer,Promise,Date,setInterval(){return {unref(){}};},require(name){if(name==='./compat')return {};
   if(name==='webos-service')return Service;if(name==='./provider')return {Provider};if(name==='./account')return ()=>account;if(name==='./user-config')return ()=>()=>Promise.resolve(null);if(name==='./vault')return {};
   if(name==='fs')return Object.assign({},fs,{unlink(file,ready){removed.push(file);ready();}});return require(name);
  }};
@@ -24,7 +24,7 @@ test('E0: rejected iframe verification preserves the saved account and serialize
  let rejectVerification,loads=0,writes=0;
  class Provider{clear(){this.auth=null;}acceptFrameSession(){return new Promise((resolve,reject)=>{rejectVerification=reject;});}}
  class Service{constructor(){this.activityManager={create(name,ready){ready({});}};}register(name,handler){handlers[name]=handler;}}
- const context={Buffer,Promise,Date,setInterval(){return {unref(){}};},require(name){
+ const context={Buffer,Promise,Date,setInterval(){return {unref(){}};},require(name){if(name==='./compat')return {};
   if(name==='webos-service')return Service;if(name==='./provider')return {Provider};
   if(name==='./account')return ()=>({load:async()=>{loads++;return saved;},save:async()=>{writes++;}});
   if(name==='./user-config')return ()=>()=>Promise.resolve(null);if(name==='./vault')return {};return require(name);

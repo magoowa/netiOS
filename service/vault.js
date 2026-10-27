@@ -1,4 +1,5 @@
 'use strict';
+require('./compat');
 var crypto = require('crypto');
 var ITERATIONS = 600000;
 function derive(passphrase, salt) {

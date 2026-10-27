@@ -1,4 +1,5 @@
 'use strict';
+require('./compat');
 var Service = require('webos-service');
 var fs = require('fs');
 var path = require('path');
@@ -74,6 +75,18 @@ register('performance', function () {
 });
 register('login', function (p) { clearMemory(); return provider.login(p.username, p.password, p.captcha).then(function () { credentials = {username: p.username, password: p.password}; return true; }); }, true);
 register('rememberedAccount', function () { return account.load().then(function (saved) { rememberedProfile = saved && saved.profile ? saved.profile.id : null; return saved; }); });
+// One-time session handed over from a browser where the user logged in at go.netia.pl (tools/installer, -ImportSession):
+// the official form cannot run on webOS 4's Chromium 53. The file is removed on first read; acceptFrameSession validates it.
+register('importedSession', function () {
+    var imported = path.join(storage, 'import-session.json');
+    return read(imported, 'utf8').then(function (text) {
+        return unlink(imported).then(function () {
+            var data; try { data = text.length <= 65536 && JSON.parse(text); } catch (error) { data = null; }
+            if (!data || typeof data !== 'object') throw new Error('INVALID_SESSION');
+            return {session: data.session, clientId: data.clientId, deviceId: data.deviceId};
+        });
+    }, function (error) { if (error.code === 'ENOENT') return null; throw new Error('IMPORT_READ'); });
+}, true);
 register('acceptFrameSession', function (p) {
     if ((p.username !== undefined || p.password !== undefined) && (typeof p.username !== 'string' || !p.username.trim() || p.username.length > 256 || p.password !== undefined && (typeof p.password !== 'string' || !p.password || p.password.length > 1024))) throw new Error('INVALID_CREDENTIALS');
     if(p.remember!==undefined && typeof p.remember!=='boolean')throw new Error('INVALID_CREDENTIALS');

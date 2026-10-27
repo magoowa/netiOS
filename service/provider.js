@@ -1,4 +1,5 @@
 'use strict';
+require('./compat');
 var https = require('https');
 var crypto = require('crypto');
 var URL = require('url').URL;
@@ -371,11 +372,11 @@ Provider.prototype.play = function (id, capabilities, kind) {
                 return auth.pseudo?parseFloat(auth.pseudo.version)>=2&&(typeof s.id==='string'||Number.isFinite(s.id)):!!mediaUrl(s.url,true);
             }).sort(function(a,b){return (parseInt(b.quality,10)||0)-(parseInt(a.quality,10)||0);})[0];
             if(!direct)throw new Error('UNSUPPORTED_STREAM');
-            function directMedia(value){
+            var directMedia=function(value){
                 if(generation!==self.generation)throw new Error('STALE_REQUEST');
                 var url=mediaUrl(value,true);if(!url)throw new Error('UNSUPPORTED_STREAM');
                 self.playing=null;self.playbackDiagnostic=null;return {url:url,title:channel.title,drm:null,mimeType:'video/mp4'};
-            }
+            };
             if(!direct.authorizationServices||!direct.authorizationServices.pseudo)return directMedia(direct.url);
             // The official player authorizes pseudo v2 through the signed DRM API.
             return self.rpc('drm','getPseudoLicense',{cpid:channel.cpid,mediaId:channel.id,sourceId:direct.id,userAgentData:mediaAgent,deviceId:Object.assign({name:'Netia GO webOS'},self.identity.deviceId)}).then(function(license){return directMedia(license&&license.url);});

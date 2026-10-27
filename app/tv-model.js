@@ -69,11 +69,31 @@
         if (!window) return [];
         return items.filter(function (p) { return p.end > window.start && p.start < window.end; }).map(function (p) { return {title:p.title, start:Math.max(p.start,window.start), left:(Math.max(p.start,window.start)-window.start)/(window.end-window.start)*100, width:(Math.min(p.end,window.end)-Math.max(p.start,window.start))/(window.end-window.start)*100}; });
     }
+    // Episode before/after id in watching order (season, then episode number, then title); categories are not episodes.
+    function adjacentEpisode(items, id, direction) {
+        var episodes = catalogue((items || []).filter(function (item) { return item && !item.category; }), 'seasons');
+        var index = episodes.findIndex(function (item) { return item.id === id; });
+        return index < 0 ? null : episodes[index + direction] || null;
+    }
+    // Live |< and >|: position (s) of the programme start to jump to inside the buffer. Back goes to the start of the
+    // current programme, or to the previous one within the first 5 s; a start before the buffer falls back to its earliest
+    // moment. Forward goes to the next programme start, or to the live edge when that start is not buffered yet.
+    function segmentPosition(items, window, now, direction) {
+        if (!window || !Number.isFinite(now)) return null;
+        var earliest = (window.start - window.origin) / 1000, current = at(items || [], now);
+        if (direction > 0) {
+            var next = current ? current.end : null;
+            return Number.isFinite(next) && next < window.end - 1000 ? Math.max(earliest, (next - window.origin) / 1000) : (window.end - window.origin) / 1000;
+        }
+        var target = current && now - Math.max(current.start, window.start) > 5000 ? current : current ? at(items, current.start - 1) : null;
+        var value = target ? programmePosition(target.start, window, target.end) : null;
+        return value === null ? earliest : value;
+    }
     // A list saved by NetiosData: its items while younger than maxAge, otherwise null (absent, empty, malformed or expired).
     function savedList(saved, maxAge, now) {
         var items = saved && saved.value && saved.value.items;
         return Array.isArray(items) && items.length && Number.isFinite(saved.at) && now - saved.at >= 0 && now - saved.at < maxAge ? items : null;
     }
-    var model = {preferences: preferences, savedList: savedList, channels: channels, catalogue:catalogue, catalogueGroups:catalogueGroups, episodeTitle:episodeTitle, playbackTime:playbackTime, search: search, seek: seek, at: at, buffer:buffer, programmePosition:programmePosition, segments:segments};
+    var model = {preferences: preferences, savedList: savedList, channels: channels, catalogue:catalogue, catalogueGroups:catalogueGroups, episodeTitle:episodeTitle, playbackTime:playbackTime, search: search, seek: seek, at: at, buffer:buffer, programmePosition:programmePosition, segments:segments, adjacentEpisode:adjacentEpisode, segmentPosition:segmentPosition};
     if (typeof module !== 'undefined') module.exports = model; else root.TVModel = model;
 }(this));

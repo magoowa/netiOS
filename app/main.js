@@ -63,7 +63,7 @@
     $('oled-minutes').value=String(oledMinutes);Array.prototype.forEach.call($('oled-minutes').options,function(option){option.textContent=T('options.minutes',{minutes:option.value});});
     $('oled-minutes').mdiUpdate();
     $('oled-minutes').onchange=function(){var value=Number(this.value);if([30,60,90,120].indexOf(value)<0)return;oledMinutes=value;oledLastActivity=Date.now();try{localStorage.setItem('netios-oled-minutes',String(value));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
-    var optionHelp={'menu-favorite':'options.help.favorite','menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','perf-toggle':'options.help.perf'};
+    var optionHelp={'menu-favorite':'options.help.favorite','menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','perf-toggle':'options.help.perf','autonext-toggle':'options.help.autonext'};
     // Help follows focus only; a real pointer move focuses the hovered option, while a dialog opening under a resting
     // pointer (Chromium's synthetic mouseenter) no longer swaps the help for an option that is not selected.
     Object.keys(optionHelp).forEach(function(id){$(id).onfocus=function(){$('option-help').textContent=T(optionHelp[id]);};});
@@ -117,7 +117,7 @@
             show('profiles'); $('remember-profile').checked=!!saved; $('profile-list').textContent = '';
             items.forEach(function (p, i) {
                 var button = document.createElement('button'), avatar = document.createElement('span'), name = document.createElement('span');
-                avatar.className = 'profile-avatar'; avatar.style.backgroundColor = ['#725fa7', '#386e91', '#915b77', '#477d72'][i % 4];
+                avatar.className = 'profile-avatar avatar-' + i % 4;
                 avatar.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="30" r="19"/><path d="M18 88c0-39 64-39 64 0"/></svg>';
                 name.className = 'profile-name'; name.textContent = p.name; button.appendChild(avatar); button.appendChild(name);
                 button.onclick = function () { run(function () { return rpc('selectProfile', {id: p.id, remember: $('remember-profile').checked}).then(channels); }); };
@@ -339,6 +339,11 @@
         if(perf.on){perf.frames=0;perf.since=performance.now();$('perf-overlay').textContent=T('perf.value',{fps:'…',cpu:'…',ram:'…',app:'…'});perf.frame=requestAnimationFrame(perfFrame);perf.timer=setInterval(perfSample,1000);rpc('performance').catch(function(){});}
     }
     perfState();$('perf-toggle').onclick=function(){perf.on=!perf.on;perfState();try{localStorage.setItem('netios-perf-overlay',String(perf.on));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
+    // Options > Auto-play episodes (also in the player's settings for series and shows): 10 s countdown, then the next one.
+    var autoNext=false,playlist=null,nextUp={cancelled:false,fired:-1};try{autoNext=localStorage.getItem('netios-auto-next')==='true';}catch(error){}
+    function autoNextState(){$('autonext-toggle').setAttribute('aria-pressed',String(autoNext));setIcon($('autonext-toggle'),'playlist-play',T('options.autonext')+' · '+T(autoNext?'options.on':'options.off'));}
+    function setAutoNext(value){autoNext=value;autoNextState();if(!autoNext)hideNextUp();try{localStorage.setItem('netios-auto-next',String(autoNext));}catch(error){notice(new Error('PREFERENCES_SAVE'));}}
+    autoNextState();$('autonext-toggle').onclick=function(){setAutoNext(!autoNext);};
     smoothState();$('smooth-toggle').onclick=function(){smoothScroll=!smoothScroll;smoothState();try{localStorage.setItem('netios-smooth-scroll',String(smoothScroll));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
     function focusControl(target,direction) { var top=Scrolling.target($('library-results'));target.focus({preventScroll: true});if(target.classList.contains('library-card'))alignLibrary(target,direction,top); }
     function centerChannel(target, immediate) {
@@ -507,7 +512,7 @@
         if(digit!==null){e.preventDefault();if(e.repeat)return true;channelDigits=(channelDigits.length>=4?'':channelDigits)+digit;$('channel-number-entry').textContent=channelDigits;$('channel-number-entry').hidden=false;clearTimeout(numberTimer);numberTimer=setTimeout(commitChannelNumber,1500);return true;}
         if(channelDigits&&e.keyCode===13){e.preventDefault();commitChannelNumber();return true;}return false;
     }
-    function begin(id, start, end) { playerReturn='channels';return run(function () { selectedChannel = id; focusedChannel = id; return play(id, start, undefined, end); }); }
+    function begin(id, start, end) { playerReturn='channels';playlist=null;return run(function () { selectedChannel = id; focusedChannel = id; return play(id, start, undefined, end); }); }
     function chooseQuality(mode) {
         if (!player) return; qualityMode = mode; player.configure({abr: {enabled: mode === 'auto'}});
         if (mode !== 'auto') {
@@ -528,7 +533,7 @@
     function play(id, start, vod, end) {
         var current;
         return stop().then(function () {
-            current = generation; selectedVod=vod||null;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie");
+            current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie");
             $('player-controls').classList.toggle('vod',!!vod);$('vod-time').hidden=!vod;$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(0),duration:T('player.unknownTime')});
             if (!navigator.requestMediaKeySystemAccess) throw new Error('WIDEVINE_REQUIRED');
             return navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
@@ -557,12 +562,40 @@
     }
     function reveal() {
         clearTimeout(hideTimer); $('player-controls').classList.remove('controls-hidden');
-        if (screen === 'player') hideTimer = setTimeout(function () { if (!modal && $('guide').hidden && !$('video').paused && !$('player-message').textContent) $('player-controls').classList.add('controls-hidden'); }, 5000);
+        if (screen === 'player') hideTimer = setTimeout(function () { if (!modal && $('guide').hidden && !$('video').paused && !$('player-message').textContent && $('next-up').hidden) $('player-controls').classList.add('controls-hidden'); }, 5000);
     }
     function seek(delta, live) {
         if (!player) return; var range = player.seekRange(), target = TVModel.seek(live ? range.end : $('video').currentTime + delta, range);
         if (target !== null && range.end - range.start > 1) $('video').currentTime = target; reveal();
     }
+    // Episodes: neighbours in the series/show list the episode was started from. Live: programme starts inside the buffer.
+    function neighbour(direction){return selectedVod&&playlist?TVModel.adjacentEpisode(playlist,selectedVod.id,direction):null;}
+    function episodeCaption(item){return TVModel.episodeTitle(item.title,$('library-title').textContent,libraryDetails&&libraryDetails.items?libraryDetails.items.length:libraryItems.length);}
+    function playEpisode(item){
+        var saved=libraryCache[libraryKey()],index=saved?saved.items.indexOf(item):-1;if(index>=0)saved.focus=index;
+        return run(function(){return play(item.id,undefined,Object.assign({},item,{title:episodeCaption(item)}));});
+    }
+    function skip(direction){
+        if(selectedVod){var item=neighbour(direction);if(item)playEpisode(item);return;}
+        if(!player)return;var date=typeof player.getPlayheadTimeAsDate==='function'?player.getPlayheadTimeAsDate():null;
+        var value=TVModel.segmentPosition(playerPrograms,bufferWindow(),date?date.getTime():NaN,direction);if(value!==null)$('video').currentTime=value;reveal();
+    }
+    function hideNextUp(){var card=$('next-up');if(card.hidden)return;card.hidden=true;if(card.contains(document.activeElement))$('pause-button').focus();}
+    function updateNextUp(video){
+        var next=autoNext?neighbour(1):null,remaining=video.duration-video.currentTime;
+        if(Number.isFinite(remaining)&&remaining>15)nextUp.cancelled=false;
+        if(!next||nextUp.cancelled||!Number.isFinite(remaining)||video.duration<30||remaining>10){hideNextUp();return;}
+        if(remaining<=0.5){if(nextUp.fired!==generation){nextUp.fired=generation;playEpisode(next);}return;}
+        var card=$('next-up');$('next-up-count').textContent=T('player.nextIn',{seconds:Math.ceil(remaining)});
+        if(card.hidden){
+            var image=$('next-up-image'),src=next.image||libraryDetails&&libraryDetails.image;image.hidden=!src;if(src)setImage(image,src);
+            $('next-up-title').textContent=episodeCaption(next);card.hidden=false;reveal();focusControl($('next-up-play'));
+        }
+    }
+    $('video').addEventListener('ended',function(){if(screen==='player'&&selectedVod&&autoNext&&!nextUp.cancelled&&nextUp.fired!==generation){var next=neighbour(1);if(next){nextUp.fired=generation;playEpisode(next);}}});
+    $('next-up-play').onclick=function(){var next=neighbour(1);if(next){nextUp.fired=generation;playEpisode(next);}};
+    // Cancel (and Back while the card is up) ends watching: back to the episode list.
+    $('next-up-cancel').onclick=function(){nextUp.cancelled=true;backToChannels().catch(notice);};
     function pause() { if (!player) return; if ($('video').paused) $('video').play().catch(notice); else $('video').pause(); reveal(); }
     function bufferWindow() {
         if(selectedVod || !player || typeof player.getPlayheadTimeAsDate !== 'function')return null;
@@ -587,11 +620,12 @@
         var video = $('video'), range = player.seekRange(), valid = Number.isFinite(range.start) && Number.isFinite(range.end) && range.end - range.start > 1;
         var behind = valid ? Math.max(0, range.end - video.currentTime) : 0, position = (netiaNow() || Date.now()) - behind * 1000;
         $('timeline').disabled = !valid; $('rewind-button').disabled = $('forward-button').disabled = !valid;
+        $('previous-button').disabled=selectedVod?!neighbour(-1):!valid;$('next-button').disabled=selectedVod?!neighbour(1):!valid;
         if (valid) { $('timeline').min = range.start; $('timeline').max = range.end; if(!$('timeline').matches(':active'))$('timeline').value = video.currentTime; }
         if(!$('player-controls').classList.contains('controls-hidden'))renderTimeline();
         $('netia-clock').textContent = netiaNow() === null ? '--:--:--' : formats.clock.format(new Date(netiaNow())); setIcon($('live-badge'), behind < 15 ? 'record' : 'broadcast', T("text.na_zywo")); $('live-badge').classList.toggle('behind', behind >= 15);
         setIcon($('pause-button'), video.paused ? 'play' : 'pause'); $('pause-button').setAttribute('aria-label', video.paused ? T("text.odtwarzaj") : T("text.pauza"));
-        if(selectedVod){$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(video.currentTime)||T('player.unknownTime'),duration:TVModel.playbackTime(video.duration)||T('player.unknownTime')});$('player-title').textContent=selectedVod.title;$('player-channel').textContent='';return;}
+        if(selectedVod){updateNextUp(video);$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(video.currentTime)||T('player.unknownTime'),duration:TVModel.playbackTime(video.duration)||T('player.unknownTime')});$('player-title').textContent=selectedVod.title;$('player-channel').textContent='';return;}
         var p = TVModel.at(playerPrograms, position) || nowPrograms[selectedChannel], c = channel(selectedChannel);
         $('player-title').textContent = p ? p.title : c ? c.title : ''; $('player-channel').textContent = c ? c.title + (p ? ' · ' + time(p.start) + ' – ' + time(p.end) : '') : '';
         var date = day(position);
@@ -606,7 +640,7 @@
     function settings() {
         if (!player) return;
         var focused = document.activeElement, focusLabel = focused.textContent, focusList = focused.parentElement && focused.parentElement.id;
-        ['quality-list', 'audio-list', 'subtitle-list', 'subtitle-sizes'].forEach(function (id) { $(id).textContent = ''; });
+        ['quality-list', 'audio-list', 'subtitle-list', 'subtitle-sizes', 'autonext-list'].forEach(function (id) { $(id).textContent = ''; });
         option('quality-list', T("text.najwyzsza"), function () { chooseQuality('highest'); settings(); }, qualityMode === 'highest');
         option('quality-list', T("text.auto"), function () { chooseQuality('auto'); settings(); }, qualityMode === 'auto');
         var tracks = player.getVariantTracks(), heights = tracks.map(function (t) { return t.height; }).filter(function (h, i, all) { return h && all.indexOf(h) === i; }).sort(function (a, b) { return b - a; });
@@ -628,6 +662,9 @@
         texts.forEach(function (track) { option('subtitle-list', track.label || track.language || T("text.napisy"), function () { player.selectTextTrack(track); player.setTextTrackVisibility(true); settings(); }, track.active && player.isTextTrackVisible()); });
         if (!texts.length) { var empty = document.createElement('p'); empty.textContent = T("text.kanal_nie_udostepnia_napisow"); $('subtitle-list').appendChild(empty); }
         [50, 75, 100, 150, 200].forEach(function (size) { option('subtitle-sizes', size + '%', function () { prefs.subtitleSize = size; subtitleSize(); savePreferences(); settings(); }, prefs.subtitleSize === size); });
+        // Auto-play only applies to series and shows, i.e. an episode started from such a list.
+        $('autonext-heading').hidden=!(selectedVod&&playlist);
+        if(selectedVod&&playlist){option('autonext-list',T('options.on'),function(){setAutoNext(true);settings();},autoNext);option('autonext-list',T('options.off'),function(){setAutoNext(false);settings();},!autoNext);}
         if (modal !== 'player-settings') openModal('player-settings');
         else if (focusList && $(focusList)) { var target = Array.prototype.find.call($(focusList).querySelectorAll('button'), function (b) { return b.textContent === focusLabel; }); if (target) target.focus(); }
     }
@@ -970,7 +1007,7 @@
                 image.hidden=!src;image.onerror=function(){if(parentImage&&image.dataset.src!==parentImage){image.dataset.src=parentImage;setImage(image,parentImage);}else image.hidden=true;};var caption=document.createElement('span');caption.textContent=captionText;title.appendChild(caption);frame.appendChild(image);button.appendChild(frame);button.appendChild(title);
                 button.onclick=function(){
                     rememberLibrary();if(item.category){libraryTrail.push({id:libraryId,title:item.title,item:item});libraryId=item.id;focusControl($('library-back'));loadLibrary(false);}
-                    else{libraryGeneration++;libraryLoading=false;playerReturn='library';run(function(){return play(item.id,undefined,Object.assign({},item,{title:captionText}));});}
+                    else{libraryGeneration++;libraryLoading=false;playerReturn='library';playlist=libraryId===undefined?null:libraryItems.slice();playEpisode(item);}
                 };
                 libraryNodes.push(button);$('library-grid').appendChild(button);
             });
@@ -1002,12 +1039,17 @@
     // manual: a rejected automated attempt is not repeated automatically; the form is filled and the user submits it.
     function officialLogin(retry, injected, fresh, manual) {
         clearLogin(); var attempt = {},phase='frame'; pendingLogin = attempt; show('web-login');loginStage(T("text.odczyt_zaszyfrowanego_konta_i_zapisanej_sesji")); $('splash').hidden = true;
-        return (fresh?rpc('lock').then(function(){if(attempt===pendingLogin)return NetiaFrameLogin.forget();}):Promise.resolve()).then(function(){
+        // A session imported from a computer browser (webOS 4 cannot run the official form) replaces the frame entirely.
+        var imported=null;
+        return rpc('importedSession').catch(function(){return null;}).then(function(session){imported=session&&typeof session==='object'&&session.session?session:null;
+            if(fresh&&!imported)return rpc('lock').then(function(){if(attempt===pendingLogin)return NetiaFrameLogin.forget();});
+        }).then(function(){
             if(attempt!==pendingLogin)return;
             return injected||rpc('rememberedAccount');
         }).then(function (saved) {
             if (attempt !== pendingLogin) return;
             if(!injected&&retry!==false)$('frame-remember').checked=!!(saved&&saved.remember);
+            if(imported)return imported;
             return NetiaFrameLogin.open(saved, loginStage, true, manual);
         }).then(function (session) {
             if (!session || attempt !== pendingLogin) return;
@@ -1043,6 +1085,7 @@
     $('menu-restore').onclick = function () { prefs.hidden = []; savePreferences(); renderChannels(); closeModal(); };
     $('refresh-button').onclick = function () { closeModal(false); run(function () { return channels('refresh'); }); };
     $('back-button').onclick = function () { backToChannels().catch(notice); }; $('settings-button').onclick = settings; $('close-settings').onclick = function () { closeModal(); };
+    $('previous-button').onclick=function(){skip(-1);};$('next-button').onclick=function(){skip(1);};
     $('pause-button').onclick = pause; $('rewind-button').onclick = function () { seek(-10); }; $('forward-button').onclick = function () { seek(10); }; $('live-button').onclick = $('live-badge').onclick = function () { seek(0, true); };
     $('timeline').oninput = function () { if (!player) return; var value = TVModel.seek(Number($('timeline').value), player.seekRange()); if (value !== null) { $('video').currentTime = value;var range=player.seekRange();timelineTooltip(value,(value-range.start)/(range.end-range.start)); } reveal(); };
     $('timeline').onmousemove=function(e){if(!player)return;var r=this.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),range=player.seekRange();timelineTooltip(range.start+fraction*(range.end-range.start),fraction);};

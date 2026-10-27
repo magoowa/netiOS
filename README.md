@@ -39,13 +39,22 @@ npm run release
 
 Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
 
-Pakiet po buildzie: `dist/com.netiago.webos_0.5.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
+Pakiet po buildzie: `dist/com.netiago.webos_0.5.5_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
 
 Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
 
 ## Instalacja
 
-Zainstaluj IPK przez Homebrew Channel lub zgodny instalator, np. webOS Dev Manager. Telewizor potrzebuje działającego Homebrew albo LG Developer Mode; aplikacja nie potrzebuje uprawnień root w trakcie pracy. Publiczne repozytorium Homebrew musi wskazywać hostowany manifest; IPK, manifest i ikona muszą być dostępne razem.
+Najprościej instalatorem z katalogu `tools/installer` (wymaga TV z Homebrew Channel, czyli z rootem, i włączonym SSH):
+
+- **Windows:** uruchom `Install-netiOS.cmd`.
+- **macOS:** uruchom `install-netios.command` (pierwszy raz: prawy przycisk → Otwórz).
+
+Instalator wyszukuje telewizory LG w sieci lokalnej i pozwala wybrać jeden z listy lub wpisać adres IP. Następnie łączy się przez SSH jako root (hasło SSH telewizora, domyślnie `alpine`), pobiera najnowsze wydanie z GitHuba bezpośrednio na TV, sprawdza sumę SHA-256, instaluje i uruchamia netiOS.
+
+Aktualizacje przez Homebrew Channel: w ustawieniach Homebrew Channel dodaj repozytorium `https://raw.githubusercontent.com/magoowa/netiOS/main/homebrew/repo.json`. Homebrew Channel nie udostępnia sposobu na dodanie repozytorium z zewnątrz, dlatego ten krok jest ręczny i jednorazowy.
+
+Ręcznie: zainstaluj IPK przez Homebrew Channel lub zgodny instalator, np. webOS Dev Manager. Telewizor potrzebuje działającego Homebrew albo LG Developer Mode; aplikacja nie potrzebuje uprawnień root w trakcie pracy. Publiczne repozytorium Homebrew musi wskazywać hostowany manifest; IPK, manifest i ikona muszą być dostępne razem.
 
 ## Sterowanie i konto
 

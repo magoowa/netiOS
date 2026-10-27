@@ -1,4 +1,5 @@
 'use strict';
+require('./compat');
 var fs=require('fs'),path=require('path'),crypto=require('crypto'),promisify=require('util').promisify,validate=require('./config-model');
 module.exports=function(directory){
     var file=path.join(directory,'user-config.json'),read=promisify(fs.readFile),write=promisify(fs.writeFile);

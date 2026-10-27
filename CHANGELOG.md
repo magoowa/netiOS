@@ -1,5 +1,13 @@
 # Historia zmian netiOS
 
+## 0.5.5
+
+### Odtwarzacz
+
+- Przyciski **|◂** i **▸|**: w serialach i programach przełączają poprzedni i następny odcinek, w telewizji przeskakują między audycjami w buforze. Audycja zaczęta przed buforem startuje od najwcześniejszego dostępnego momentu, a następna audycja, której jeszcze nie ma w buforze, przełącza na żywo.
+- **Autoodtwarzanie odcinków** (Opcje oraz zębatka w odtwarzaczu przy serialach i programach): 10 sekund przed końcem karta w prawym dolnym rogu pokazuje odliczanie, miniaturę i tytuł następnego odcinka. „Anuluj” lub Wstecz wraca do listy odcinków.
+- Przycisk „na żywo” ma własną ikonę.
+
 ## 0.5.0
 
 ### Przewijanie i nawigacja

@@ -1,4 +1,5 @@
 'use strict';
+require('./compat');
 var fs = require('fs'), path = require('path'), crypto = require('crypto'), promisify = require('util').promisify, vault = require('./vault');
 module.exports = function (directory) {
     var read = promisify(fs.readFile), write = promisify(fs.writeFile), remove = promisify(fs.unlink);

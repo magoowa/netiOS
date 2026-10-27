@@ -119,7 +119,7 @@ test('a new app process discards warm service state and cookies before iframe lo
   throw new Error('UNEXPECTED_CALL');
  });
  await f.context.start();
- assert.deepEqual(calls,['lock','forget','rememberedAccount','iframe','acceptFrameSession','forget','rememberedAccount','iframe','acceptFrameSession']);
+ assert.deepEqual(calls,['importedSession','lock','forget','rememberedAccount','iframe','acceptFrameSession','forget','importedSession','rememberedAccount','iframe','acceptFrameSession']);
  assert.equal(f.events.at(-1),'RPC_13572');
 });
 
@@ -159,7 +159,7 @@ test('E1: profiles rejection after accepted iframe session is reported without c
   throw new Error('UNEXPECTED_CALL');
  });
  await f.context.start();
- assert.deepEqual(calls,['lock','forget','rememberedAccount','acceptFrameSession','profiles']);
+ assert.deepEqual(calls,['importedSession','lock','forget','rememberedAccount','acceptFrameSession','profiles']);
  assert.equal(f.context.pendingLogin,null);assert.equal(f.events.at(-1),'RPC_13572');
  assert.equal(f.events.includes('RPC_13572'),true);
 });
@@ -179,7 +179,7 @@ test('cancelling cold cookie cleanup cannot start a later automatic login',async
  let finishCleanup,opened=0;const calls=[];
  const f=controllerFixture({cancel(){},forget:()=>new Promise(r=>finishCleanup=r),open:async()=>{opened++;}},async method=>{calls.push(method);if(method==='lock')return true;throw Error('UNEXPECTED_CALL');});
  const pending=f.context.start();while(!finishCleanup)await Promise.resolve();f.context.cancelLogin();finishCleanup();await pending;
- assert.equal(opened,0);assert.deepEqual(calls,['lock']);assert.equal(f.events.at(-1),'login');
+ assert.equal(opened,0);assert.deepEqual(calls,['importedSession','lock']);assert.equal(f.events.at(-1),'login');
 });
 test('visibility resume preserves an active service session without invoking cold login',async()=>{
  const source=fs.readFileSync('app/main.js','utf8'),calls=[];let handler;
@@ -214,4 +214,19 @@ test('a visible reCAPTCHA challenge stops automation and asks the user to verify
  const pending=f.api.open({username:'synthetic-user',password:'synthetic-password'},s=>statuses.push(s));
  for(let i=0;i<5;i++)f.tick();assert.deepEqual(f.submitted,[]);assert(statuses.includes(f.context.T('login.challenge')));
  f.api.cancel();await assert.rejects(pending,/LOGIN_CANCELLED/);
+});
+
+test('a session imported from a computer browser replaces cookie cleanup and the iframe (webOS 4 cannot run the official form)',async()=>{
+ const calls=[],sent=[],imported={session:{id:'s',key:'k',keyExpirationTime:9e9},clientId:'c',deviceId:'d'};
+ const api={cancel(){},forget:async()=>{calls.push('forget');},open:async()=>{calls.push('iframe');}};
+ const f=controllerFixture(api,async(method,params)=>{
+  calls.push(method);if(method==='importedSession')return imported;
+  if(method==='rememberedAccount')return null;
+  if(method==='acceptFrameSession'){sent.push(params);return true;}
+  if(method==='profiles')return [];
+  throw new Error('UNEXPECTED_CALL');
+ });
+ await f.context.start();
+ assert.deepEqual(calls,['importedSession','rememberedAccount','acceptFrameSession','profiles']);
+ assert.deepEqual([sent[0].session,sent[0].clientId,sent[0].deviceId],[imported.session,'c','d']);
 });

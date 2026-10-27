@@ -1,0 +1,32 @@
+{
+  "paging": {
+    "page": 1,
+    "count": 1,
+    "maxPage": 1,
+    "itemsTotal": 1
+  },
+  "packages": [
+    {
+      "id": "com.netiago.webos",
+      "title": "netiOS",
+      "iconUri": "https://raw.githubusercontent.com/magoowa/netiOS/main/homebrew/icon.png",
+      "manifestUrl": "https://raw.githubusercontent.com/magoowa/netiOS/main/homebrew/com.netiago.webos.manifest.json",
+      "manifest": {
+        "id": "com.netiago.webos",
+        "version": "0.5.5",
+        "type": "web",
+        "title": "netiOS",
+        "appDescription": "netiOS — nieoficjalny klient Netia GO: profile, kanały w pakiecie i odtwarzanie Widevine. Najwyższa jakość na start. Wymaga subskrypcji.",
+        "iconUri": "https://raw.githubusercontent.com/magoowa/netiOS/main/homebrew/icon.png",
+        "rootRequired": false,
+        "ipkUrl": "https://github.com/magoowa/netiOS/releases/download/v0.5.5/com.netiago.webos_0.5.5_all.ipk",
+        "ipkHash": {
+          "sha256": "49af2e613c8e79b8616d41fa138553a77fee722bf13f6b9fcb0467d5bbbe483f"
+        }
+      },
+      "category": "multimedia",
+      "pool": "main",
+      "shortDescription": "Nieoficjalny klient Netia GO dla LG webOS"
+    }
+  ]
+}

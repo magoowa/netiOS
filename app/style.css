@@ -2471,3 +2471,23 @@ html { overflow: hidden; }
 .guide-header h1 { font-size: 32px; line-height: 36px; }
 /* Program TV close button: the same 64 px circle as the Series/Shows header buttons. */
 #guide-title+#close-guide { width: 64px; min-width: 64px; height: 64px; border: 2px solid #55585c; border-radius: 50px; font-size: 26px; background: transparent; }
+
+/* Next episode: bottom-right card above the transport row and timeline (bottom bar ~200 px), clear of the close button
+   at the top. Thumbnail and text share the first row; the buttons get their own row so they never touch the image. */
+#next-up { position: absolute; bottom: 270px; right: 48px; width: 672px; display: grid; grid-template-columns: 288px minmax(0,1fr); column-gap: 26px; row-gap: 22px; padding: 22px; border-radius: 22px; background: rgba(12,14,18,.92); box-shadow: 0 14px 48px rgba(0,0,0,.55); pointer-events: auto; contain: layout paint style; }
+#next-up[hidden] { display: none; }
+.next-up-thumbnail { width: 288px; height: 162px; border-radius: 12px; overflow: hidden; background: #22262d; }
+.next-up-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.next-up-thumbnail img[hidden] { display: none; }
+.next-up-text { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+#next-up-count { margin: 0; font-size: 24px; color: #aab1bd; font-variant-numeric: tabular-nums; }
+#next-up-title { margin: 0; font-size: 29px; line-height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.next-up-actions { grid-column: 1 / -1; display: flex; gap: 16px; }
+.next-up-actions button { font-size: 24px; padding: 10px 22px; }
+#autonext-heading[hidden] { display: none; }
+
+/* Profile avatars cycle through four colours. */
+.avatar-0 { background-color: #725fa7; }
+.avatar-1 { background-color: #386e91; }
+.avatar-2 { background-color: #915b77; }
+.avatar-3 { background-color: #477d72; }

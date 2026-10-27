@@ -121,3 +121,28 @@ test('saved lists are reused only while fresh and well formed',()=>{
  for(const value of [null,{at:1000},{at:1000,value:{items:[]}},{at:1000,value:{items:'x'}},{at:'1000',value:{items:[{}]}}])assert.equal(m.savedList(value,Infinity,2000),null);
  assert.equal(m.savedList(saved,Infinity,1e15).length,1,'Channels have no expiry and refresh in the background');
 });
+
+test('next/previous episode follows season and episode order and skips categories', () => {
+ const items=[{id:'e3',title:'C',season:{number:1},episodeNumber:3},{id:'s2',title:'Sezon 2',category:true},{id:'e1',title:'A',season:{number:1},episodeNumber:1},{id:'e4',title:'D',season:{number:2},episodeNumber:1},{id:'e2',title:'B',season:{number:1},episodeNumber:2}];
+ assert.equal(m.adjacentEpisode(items,'e2',1).id,'e3');
+ assert.equal(m.adjacentEpisode(items,'e3',1).id,'e4');
+ assert.equal(m.adjacentEpisode(items,'e1',-1),null);
+ assert.equal(m.adjacentEpisode(items,'e4',1),null);
+ assert.equal(m.adjacentEpisode(items,'missing',1),null);
+});
+
+test('live |< and >| jump between programme starts inside the buffer, with the buffer start and live edge as limits', () => {
+ const t=Date.UTC(2026,9,26,18),min=60000,window={start:t+10*min,end:t+120*min,origin:t};
+ const programs=[{title:'A',start:t,end:t+30*min},{title:'B',start:t+30*min,end:t+60*min},{title:'C',start:t+60*min,end:t+150*min}];
+ // Inside B for a while: back to the start of B; forward to the start of C.
+ assert.equal(m.segmentPosition(programs,window,t+45*min,-1),30*60);
+ assert.equal(m.segmentPosition(programs,window,t+45*min,1),60*60);
+ // Just after B started: back to A, which began before the buffer, so the earliest buffered moment.
+ assert.equal(m.segmentPosition(programs,window,t+30*min+2000,-1),10*60);
+ // In C, whose end is not buffered yet: forward goes to the live edge.
+ assert.equal(m.segmentPosition(programs,window,t+90*min,1),120*60);
+ // No guide data: back falls back to the buffer start, forward to the live edge.
+ assert.equal(m.segmentPosition([],window,t+90*min,-1),10*60);
+ assert.equal(m.segmentPosition([],window,t+90*min,1),120*60);
+ assert.equal(m.segmentPosition(programs,null,t,1),null);
+});

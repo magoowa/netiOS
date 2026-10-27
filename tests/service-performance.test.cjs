@@ -4,7 +4,7 @@ function service(files){
     const handlers={};
     class Provider{clear(){}}
     class Service{constructor(){this.activityManager={create(){},complete(){}};}register(name,handler){handlers[name]=handler;}}
-    const context={Buffer,Promise,Date,process:{memoryUsage:()=>({rss:52428800,heapUsed:1})},setInterval(){return {unref(){}};},require(name){if(name==='webos-service')return Service;if(name==='./provider')return {Provider};if(name==='./account')return ()=>({});if(name==='./user-config')return ()=>()=>Promise.resolve(null);if(name==='./vault')return {};
+    const context={Buffer,Promise,Date,process:{memoryUsage:()=>({rss:52428800,heapUsed:1})},setInterval(){return {unref(){}};},require(name){if(name==='./compat')return {};if(name==='webos-service')return Service;if(name==='./provider')return {Provider};if(name==='./account')return ()=>({});if(name==='./user-config')return ()=>()=>Promise.resolve(null);if(name==='./vault')return {};
         if(name==='fs')return Object.assign({},fs,{readFile(file,options,ready){if(typeof options==='function')ready=options;const text=files[file]&&files[file].shift();if(text===undefined){const e=Error('absent');e.code='ENOENT';return ready(e);}ready(null,text);}});return require(name);}};
     vm.runInNewContext(fs.readFileSync('service/service.js','utf8'),context);
     return ()=>new Promise(resolve=>handlers.performance({sender:'com.netiago.webos',payload:{},respond:resolve}));

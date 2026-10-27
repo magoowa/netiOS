@@ -1,6 +1,6 @@
 # Publikacja na GitHub i przez Homebrew
 
-Publikuj czysty eksport `dist/github/netiOS`, a nie nadrzędny katalog roboczy. Eksport zawiera własny Git, jedno zatwierdzenie z neutralnym autorem, gałąź `codex/release-WERSJA` i tag `vWERSJA`. Jego historia nie obejmuje prywatnych badań ani wcześniejszych commitów. Repozytorium nie ma ustawionego remote.
+Publikuj czysty eksport `dist/github/netiOS`, a nie nadrzędny katalog roboczy. Eksport zawiera własny Git, jedno zatwierdzenie z neutralnym autorem, gałąź `main` i tag `vWERSJA`. Jego historia nie obejmuje prywatnych badań ani wcześniejszych commitów. Repozytorium nie ma ustawionego remote.
 
 ## Źródła
 

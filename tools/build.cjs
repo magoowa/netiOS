@@ -20,7 +20,7 @@ fs.mkdirSync(app, {recursive: true}); fs.mkdirSync(service, {recursive: true});
 for (const file of ['appinfo.json', 'index.html', 'main.js', 'image-cache.js', 'quality.js', 'tv-model.js', 'icons.js', 'mdi-component.js', 'frame-login.js', 'webOSTV.js', 'style.css', 'texts.js']) fs.copyFileSync(path.join(root, 'app', file), path.join(app, file));
 fs.copyFileSync(path.join(root,'service/config-model.js'),path.join(app,'config-model.js'));
 fs.writeFileSync(path.join(app,'strings.js'),'window.NETIOS_STRINGS='+JSON.stringify(strings)+';\n');
-for (const file of ['package.json', 'services.json', 'service.js', 'provider.js', 'vault.js', 'account.js', 'user-config.js', 'config-model.js']) fs.copyFileSync(path.join(root, 'service', file), path.join(service, file));
+for (const file of ['package.json', 'services.json', 'service.js', 'provider.js', 'vault.js', 'account.js', 'user-config.js', 'config-model.js', 'compat.js']) fs.copyFileSync(path.join(root, 'service', file), path.join(service, file));
 fs.mkdirSync(path.join(app, 'vendor'), {recursive: true});
 fs.copyFileSync(require.resolve('shaka-player/dist/shaka-player.compiled.js'), path.join(app, 'vendor', 'shaka-player.compiled.js'));
 fs.copyFileSync(path.join(root, 'node_modules', 'shaka-player', 'LICENSE'), path.join(app, 'vendor', 'SHAKA-LICENSE'));

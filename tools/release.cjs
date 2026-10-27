@@ -14,7 +14,7 @@ function sources(directory=root){
         const file=path.posix.join(relative,item.name);
         if(item.isDirectory())walk(file);
         else if(file.startsWith('docs/')&&!publicDocs.test(file))continue;
-        else if(/\.(?:js|cjs|json|css|html|svg|png|woff2|py|md|ya?ml)$/.test(item.name)||/^(?:MDI|JOSEFIN|WEBOSTV)-LICENSE$/.test(item.name))files.push(file);
+        else if(/\.(?:js|cjs|json|css|html|svg|png|woff2|py|md|ya?ml|sh|ps1|cmd|command)$/.test(item.name)||/^(?:MDI|JOSEFIN|WEBOSTV)-LICENSE$/.test(item.name))files.push(file);
         else throw Error('RELEASE_UNKNOWN_FILE');
     }}
     for(const name of directories)walk(name);
@@ -69,8 +69,18 @@ function release(){
     }
     for(const name of [ipk,'com.netiago.webos.manifest.json','icon.png','SHA256SUMS'])fs.copyFileSync(path.join(dist,name),path.join(output,name));
     for(const file of files){const to=path.join(checkout,file);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,file),to);}
-    execFileSync('git',['init','-b','codex/release-'+version],{cwd:checkout,stdio:'pipe'});
+    // Homebrew Channel repository served from the published repository (raw files allow cross-origin reads); the IPK is a
+    // release asset. NETIOS_REPO names the GitHub repository (OWNER/NAME).
+    const repository=process.env.NETIOS_REPO||'magoowa/netiOS';assert(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repository),'RELEASE_REPOSITORY');
+    const raw='https://raw.githubusercontent.com/'+repository+'/main/homebrew/',homebrew=path.join(checkout,'homebrew');fs.mkdirSync(homebrew);
+    const hosted=Object.assign({},manifest,{ipkUrl:'https://github.com/'+repository+'/releases/download/v'+version+'/'+ipk,iconUri:raw+'icon.png'});
+    fs.writeFileSync(path.join(homebrew,'com.netiago.webos.manifest.json'),JSON.stringify(hosted,null,2)+'\n');fs.copyFileSync(path.join(dist,'icon.png'),path.join(homebrew,'icon.png'));
+    const listing=JSON.stringify({paging:{page:1,count:1,maxPage:1,itemsTotal:1},packages:[{id:manifest.id,title:manifest.title,iconUri:raw+'icon.png',manifestUrl:raw+'com.netiago.webos.manifest.json',manifest:hosted,category:'multimedia',pool:'main',shortDescription:'Nieoficjalny klient Netia GO dla LG webOS'}]},null,2)+'\n';
+    // repo.json is the same listing under the name repository tools commonly look for; apps.json stays for existing users.
+    for(const name of ['apps.json','repo.json'])fs.writeFileSync(path.join(homebrew,name),listing);
+    execFileSync('git',['init','-b','main'],{cwd:checkout,stdio:'pipe'});
     execFileSync('git',['add','--all'],{cwd:checkout,stdio:'pipe'});
+    for(const file of files.filter(f=>/\.(?:sh|command)$/.test(f)))execFileSync('git',['update-index','--chmod=+x',file],{cwd:checkout,stdio:'pipe'});
     // The export is authored by a neutral identity unless NETIOS_RELEASE_AUTHOR=git asks for the maintainer's own git identity.
     const own=process.env.NETIOS_RELEASE_AUTHOR==='git',config=key=>execFileSync('git',['config',key],{cwd:root,encoding:'utf8'}).trim();
     const name=own?config('user.name'):'netiOS Project',email=own?config('user.email'):'project@users.noreply.github.com';
