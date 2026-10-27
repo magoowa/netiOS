@@ -2,7 +2,7 @@
 
 # netiOS
 
-Nieoficjalny klient Netia GO dla telewizorów LG z webOS 5 i nowszym. Wymagany abonament w Netii. Automatyczny dobór kanałów, programów i seriali dostępnych w ramach wykupionego pakietu.
+Nieoficjalny klient Netia GO dla telewizorów LG z webOS 4 i nowszym. Wymagany abonament w Netii. Automatyczny dobór kanałów, programów i seriali dostępnych w ramach wykupionego pakietu.
 Zero crapu, reklam i innego badziewia. Ciesz się ponad 200 odcinkami "Demakijażu" Ibisza, "Pamiętnikami z wakacji", "Zdradami" i innymi hitami z uniwersum polslopu!
 Funkcja OLED Saver automatycznie włączy wygaszacz ekranu wszystkim używającym TV jako maszyny grającej i uchroni matrycę przed wypaleniem pasku TV Republiki, TVNu czy co tam oglądacie.
 
