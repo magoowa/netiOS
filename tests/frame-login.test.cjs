@@ -230,3 +230,18 @@ test('a session imported from a computer browser replaces cookie cleanup and the
  assert.deepEqual(calls,['importedSession','rememberedAccount','acceptFrameSession','profiles']);
  assert.deepEqual([sent[0].session,sent[0].clientId,sent[0].deviceId],[imported.session,'c','d']);
 });
+
+test('a rejected imported session is discarded and the login screen shows, without falling back to the iframe',async()=>{
+ const calls=[],imported={session:{id:'s',key:'k',keyExpirationTime:9e9},clientId:'c',deviceId:'d'};
+ const api={cancel(){},forget:async()=>{calls.push('forget');},open:async()=>{calls.push('iframe');}};
+ const f=controllerFixture(api,async method=>{
+  calls.push(method);if(method==='importedSession')return imported;
+  if(method==='rememberedAccount')return null;
+  if(method==='acceptFrameSession')throw new Error('INVALID_SESSION');
+  if(method==='discardImportedSession')return true;
+  throw new Error('UNEXPECTED_CALL');
+ });
+ await f.context.start();
+ assert.deepEqual(calls,['importedSession','rememberedAccount','acceptFrameSession','discardImportedSession']);
+ assert.equal(f.events.at(-1),'INVALID_SESSION');assert.equal(f.events.includes('login'),true);
+});

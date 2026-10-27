@@ -1,5 +1,30 @@
 # Historia zmian netiOS
 
+## 0.6.0
+
+### webOS 4
+
+- netiOS działa na webOS 4 (sprawdzone na OLED55C9, webOS 4.10). Usługa jest zgodna z Node.js 0.12: bez nowszej składni i API, z polskim sortowaniem bez `Intl` i z certyfikatami z systemu telewizora (wbudowana lista Node.js 0.12 nie zna certyfikatu API Netii).
+- Logowanie przez komputer: `Import-Session.cmd` otwiera oficjalny formularz Netia GO w przeglądarce, a po zalogowaniu przenosi sesję na telewizor przez telnet lub SSH. Przeglądarka webOS 4 nie uruchamia formularza Netii. Sesja działa przy każdym uruchomieniu, aż wygaśnie, Netia ją odrzuci albo nastąpi wylogowanie.
+- Układ dla starszej przeglądarki (Chromium 53, bez CSS Grid): kafle kanałów i VOD, okna Opcji, Diagnostyki i ustawień odtwarzacza.
+- Dziennik logowania na telewizorze (`login.log`): nazwy wywołań, wyniki i kody błędów, bez danych poufnych.
+
+### Instalator
+
+- Pakiet `netiOS-0.6.0-installer.zip` z dołączoną paczką: instalator używa lokalnego IPK (obok, z `dist/` lub z podanej ścieżki), a dopiero bez niego pobiera wydanie z GitHuba.
+- SSH albo telnet Homebrew Channel; instalator czeka na faktyczny wynik instalacji zgłoszony przez system.
+- Repozytorium Homebrew Channel także jako `homebrew/repo.json`.
+- [Poradnik instalacji](docs/INSTALL.md) ze zrzutami ekranu.
+- Eksperymentalnie: przeniesienie sesji z macOS (`Import-Session.command`), bez instalowania dodatkowych programów.
+
+### Interfejs
+
+- Duże kółko ładowania na środku ekranu przy starcie odtwarzania i wczytywaniu listy; animowane kropki przy etapach logowania.
+- Seriale i programy wczytują kolejno opis, kafle odcinków, tło i miniatury.
+- Postęp pierwszego pobierania programu TV („X z Y kanałów”).
+- Ustawienia odtwarzacza mniejsze o 15%, z OLED Saver w jednym rzędzie; gradient w oknach.
+- Płynne przewijanie domyślnie włączone.
+
 ## 0.5.5
 
 ### Odtwarzacz

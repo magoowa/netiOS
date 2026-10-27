@@ -1,5 +1,7 @@
 (function () {
     'use strict';
+    // Older webOS (Chromium < 57) has no CSS Grid: style.css lays the same screens out with flexbox under .legacy.
+    var engine=/Chrome\/(\d+)/.exec(navigator.userAgent);if(engine&&+engine[1]<57)document.documentElement.classList.add('legacy');
     // On the TV (Chromium 68) every toLocale*String call and new Intl.DateTimeFormat builds a formatter (several ms each;
     // 575 ms measured when the guide added a day). Each format is created once and reused.
     var formats={time:new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Warsaw'}),clock:new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Europe/Warsaw'}),
@@ -58,7 +60,13 @@
     var oledMinutes=30,oledLastActivity=Date.now(),oledResume=false,oledEnabled=true;
     try{oledEnabled=localStorage.getItem('netios-oled-enabled')!=='false';}catch(error){}
     function oledState(){$('oled-toggle').setAttribute('aria-pressed',String(oledEnabled));setIcon($('oled-toggle'),'lifebuoy',T('options.oled')+' · '+T(oledEnabled?'options.on':'options.off'));}
-    oledState();$('oled-toggle').onclick=function(){oledEnabled=!oledEnabled;oledLastActivity=Date.now();oledState();try{localStorage.setItem('netios-oled-enabled',String(oledEnabled));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
+    oledState();$('oled-toggle').onclick=function(){setOled(!oledEnabled);};
+    // Options and the player's settings share one OLED Saver state: on/off and the idle time.
+    function setOled(enabled,minutes){
+        oledEnabled=enabled;oledLastActivity=Date.now();oledState();
+        if(minutes){oledMinutes=minutes;$('oled-minutes').value=String(minutes);$('oled-minutes').mdiUpdate();}
+        try{localStorage.setItem('netios-oled-enabled',String(oledEnabled));if(minutes)localStorage.setItem('netios-oled-minutes',String(minutes));}catch(error){notice(new Error('PREFERENCES_SAVE'));}
+    }
     try{var storedOled=Number(localStorage.getItem('netios-oled-minutes'));if([30,60,90,120].indexOf(storedOled)>=0)oledMinutes=storedOled;}catch(error){}
     $('oled-minutes').value=String(oledMinutes);Array.prototype.forEach.call($('oled-minutes').options,function(option){option.textContent=T('options.minutes',{minutes:option.value});});
     $('oled-minutes').mdiUpdate();
@@ -81,7 +89,12 @@
     function notice(error) { if(error)lastRegisteredError={time:netiaNow(),code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR',message:messages[error.message]||T('errors.generic',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR'})};clearTimeout(noticeTimer); $('notice').textContent = error ? messages[error.message] || T('errors.generic',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR'}) : ''; if(error)noticeTimer=setTimeout(function(){notice();},5000); }
     $('notice').onclick=function(){notice();};
     Array.prototype.forEach.call(document.querySelectorAll('.app-version'),function(n){n.textContent=T('version.label',{version:APP_VERSION});});
-    function loginStage(text){$('login-stage').textContent=text;$('splash-status').textContent=text;}
+    // A stage that is still running ("…") gets animated dots instead of a static ellipsis.
+    function loginStage(text){var busy=/(\u2026|\.\.\.)$/.test(text);text=text.replace(/(\u2026|\.\.\.)$/,'');['login-stage','splash-status'].forEach(function(id){$(id).textContent=text;$(id).classList.toggle('working',busy);});}
+    // One large spinner in the middle of the screen while a video starts or a catalogue shows nothing yet.
+    var playerConnecting=false;
+    function busySpinner(){$('busy-spinner').hidden=!(playerConnecting&&screen==='player'||screen==='library'&&libraryLoading&&!libraryNodes.length);}
+    function libraryBusy(value){$('library-results').setAttribute('aria-busy',String(value));busySpinner();}
     function run(action) {
         if (busy) return Promise.resolve(); busy = true; notice();
         return Promise.resolve().then(action).catch(notice).then(function () { busy = false;if(pendingTune){var id=pendingTune;pendingTune=null;begin(id);} });
@@ -101,7 +114,7 @@
         if(screen==='library'&&next!=='library')rememberLibrary();
         clearChannelNumber();if(next!=='channels'&&next!=='player')pendingTune=null;
         $('shell').classList.toggle('library-screen',next==='library');
-        if(screen==='library'&&next!=='library'&&next!=='player')libraryGeneration++;screen = next;requestChannelKeys(next==='channels'||next==='player'&&!selectedVod);
+        if(screen==='library'&&next!=='library'&&next!=='player')libraryGeneration++;screen = next;busySpinner();requestChannelKeys(next==='channels'||next==='player'&&!selectedVod);
         ['login', 'web-login', 'profiles', 'channels', 'library', 'save'].forEach(function (id) { $(id).hidden = id !== next; });
         $('shell').hidden = next === 'player'; $('player-controls').hidden = next !== 'player';
         notice(); closeModal(false);
@@ -318,8 +331,8 @@
         return {moving:function(el){return !!el.netiosMotion;},layered:layered,visualTop:visualTop,contentTop:contentTop,steps:steps,holdPointer:holdPointer,releasePointer:releasePointer,pointerHeld:pointerHeld,target:target,to:to,shift:shift,reveal:reveal,setSmooth:setSmooth,snapTop:snapTop,wheelRows:wheelRows,rows:rows,moveRows:moveRows,indicator:indicator,update:function(){schedule(true);}};
     }());
     Scrolling.indicator($('channel-scroll'));Scrolling.indicator($('library-results'));Scrolling.indicator($('guide-results'));Scrolling.layered($('channel-scroll'));Scrolling.layered($('library-results'));Scrolling.layered($('guide-results'));
-    // Options > Smooth scrolling: animates every list (channels, guide, catalogues, seasons, episodes); stored on this TV.
-    var smoothScroll=false;try{smoothScroll=localStorage.getItem('netios-smooth-scroll')==='true';}catch(error){}
+    // Options > Smooth scrolling (on by default): animates every list (channels, guide, catalogues, seasons, episodes); stored on this TV.
+    var smoothScroll=true;try{smoothScroll=localStorage.getItem('netios-smooth-scroll')!=='false';}catch(error){}
     function smoothState(){Scrolling.setSmooth(smoothScroll);$('smooth-toggle').setAttribute('aria-pressed',String(smoothScroll));setIcon($('smooth-toggle'),'swap-vertical',T('options.smooth')+' · '+T(smoothScroll?'options.on':'options.off'));}
     // Options > Performance panel: FPS counted from rendered frames, TV CPU/RAM from the service, the app's own memory.
     // It costs one frame callback and one service call per second, and nothing while it is off.
@@ -390,12 +403,21 @@
         if (saveAfterLogin) { saveAfterLogin = false; saveReturn = 'channels'; show('save'); }
         });
     }
+    // The first load of what is on now shows its progress (one service request per 12 channels); later refreshes are silent.
     function refreshPrograms() {
-        var current = generation;
+        var current = generation, first = !Object.keys(nowPrograms).length, timer = 0;
+        function progress(data) {
+            if (!data || !data.total) return;
+            $('epg-progress-text').textContent = T('epg.progress', {done: Math.min(data.done, data.total), total: data.total});
+            $('epg-progress-fill').style.width = Math.round(Math.min(data.done, data.total) * 100 / data.total) + '%';
+        }
+        function poll() { timer = setTimeout(function () { rpc('programsProgress').then(function (data) { if (timer) { progress(data); poll(); } }).catch(function () {}); }, 300); }
+        function done() { clearTimeout(timer); timer = 0; $('epg-progress').hidden = true; }
+        if (first) { $('epg-progress-fill').style.width = '0%'; progress({done: 0, total: channelItems.length}); $('epg-progress').hidden = false; poll(); }
         return rpc('programs').then(function (items) {
-            if (current !== generation) return;
+            done(); if (current !== generation) return;
             nowPrograms = {}; items.forEach(function (item) { nowPrograms[item.channelId] = item; }); hero();
-        }).catch(function () { if (screen === 'channels') $('hero-meta').textContent = T("text.program_tv_jest_chwilowo_niedostepny"); });
+        }).catch(function () { done(); if (screen === 'channels') $('hero-meta').textContent = T("text.program_tv_jest_chwilowo_niedostepny"); });
     }
     function markChannel() {
         var selected=channelNodes[focusedChannel];
@@ -486,7 +508,7 @@
     }
     function stop() {
         samplePlayback();
-        generation++; playerDay = ''; playerPrograms = []; clearTimeout(hideTimer); closeModal(false);
+        generation++; playerDay = ''; playerPrograms = []; clearTimeout(hideTimer); closeModal(false); playerConnecting=false; busySpinner();
         var old = player; player = null;
         return Promise.resolve(old && old.destroy()).catch(function () {}).then(function () { $('video').pause(); $('video').removeAttribute('src'); $('video').load(); return rpc('stop').catch(function () {}); });
     }
@@ -533,7 +555,7 @@
     function play(id, start, vod, end) {
         var current;
         return stop().then(function () {
-            current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie");
+            current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie").replace(/\u2026$/,''); playerConnecting=true; busySpinner();
             $('player-controls').classList.toggle('vod',!!vod);$('vod-time').hidden=!vod;$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(0),duration:T('player.unknownTime')});
             if (!navigator.requestMediaKeySystemAccess) throw new Error('WIDEVINE_REQUIRED');
             return navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
@@ -556,7 +578,7 @@
             player.configure(playbackConfig);
             player.addEventListener('error', function (event) { if (current === generation) { $('player-message').textContent='';notice(new Error('PLAYER_'+event.detail.code+(licenseError?'_'+licenseError:'')));reveal(); } });
             return player.load(data.url,undefined,data.mimeType||'application/dash+xml').then(function () {
-                if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE'); chooseQuality('highest'); $('player-message').textContent = ''; playerDay = ''; tick(); reveal(); return startVideo(current);
+                if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE'); chooseQuality('highest'); $('player-message').textContent = ''; playerConnecting=false; busySpinner(); playerDay = ''; tick(); reveal(); return startVideo(current);
             });
         }).catch(function (error) { if (current !== generation) return; return backToChannels().then(function () { throw typeof error.code==='number'?new Error('PLAYER_'+error.code+(licenseError?'_'+licenseError:'')):error; }); });
     }
@@ -640,7 +662,9 @@
     function settings() {
         if (!player) return;
         var focused = document.activeElement, focusLabel = focused.textContent, focusList = focused.parentElement && focused.parentElement.id;
-        ['quality-list', 'audio-list', 'subtitle-list', 'subtitle-sizes', 'autonext-list'].forEach(function (id) { $(id).textContent = ''; });
+        ['quality-list', 'audio-list', 'subtitle-list', 'subtitle-sizes', 'autonext-list', 'oled-list'].forEach(function (id) { $(id).textContent = ''; });
+        option('oled-list', T('options.off'), function () { setOled(false); settings(); }, !oledEnabled);
+        [30, 60, 90, 120].forEach(function (minutes) { option('oled-list', T('options.minutes', {minutes: minutes}), function () { setOled(true, minutes); settings(); }, oledEnabled && oledMinutes === minutes); });
         option('quality-list', T("text.najwyzsza"), function () { chooseQuality('highest'); settings(); }, qualityMode === 'highest');
         option('quality-list', T("text.auto"), function () { chooseQuality('auto'); settings(); }, qualityMode === 'auto');
         var tracks = player.getVariantTracks(), heights = tracks.map(function (t) { return t.height; }).filter(function (h, i, all) { return h && all.indexOf(h) === i; }).sort(function (a, b) { return b - a; });
@@ -695,6 +719,7 @@
             if(row)guideDateLabel(day(Number(row.dataset.start)));
         });
     }
+    function guideStatusNode(busy){var node=$('guide-status');node.classList.toggle('working',!!busy);return node;}
     function openGuide() {
         if (!$('guide').hidden) return; guideReturn = screen; guideChannel = screen === 'player' ? selectedChannel : focusedChannel; var highlighted=document.querySelector('.channel-card:focus');if(screen==='channels'&&highlighted)guideChannel=highlighted.dataset.channel; guideDate = day(netiaNow() || Date.now()); $('guide-search').value = ''; var c = channel(guideChannel); setGuideLogo(c); $('guide').hidden = false; closeModal(false); reveal(); loadGuide();
     }
@@ -705,7 +730,7 @@
     }
     function loadGuide() {
         cancelAnimationFrame(guideWheelFrame); guideWheelFrame = 0; var current = ++guideGeneration; guideItems = []; guideFirst = guideLast = guideDate; guideLoading = true;
-        $('guide-items').textContent = ''; $('guide-status').textContent = T("text.pobieranie_ramowki_kanalu"); guideDateLabel(guideDate);
+        $('guide-items').textContent = ''; guideStatusNode(true).textContent = T("text.pobieranie_ramowki_kanalu").replace(/\u2026$/,''); guideDateLabel(guideDate);
         rpc('programs', {id: guideChannel, date: guideDate}).then(function (items) {
             if (current !== guideGeneration) return;
             guideLoading = false; guideItems = items.filter(function(p){return p.channelId === guideChannel;}); renderGuide();
@@ -715,7 +740,7 @@
         }).catch(function (error) { if (current === guideGeneration) { guideLoading = false; guideError(error); } });
     }
     function guideError(error) {
-        $('guide-status').textContent = T('errors.guide',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'EPG_ERROR'});
+        guideStatusNode().textContent = T('errors.guide',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'EPG_ERROR'});
     }
     function guideButton(p) {
         var button = document.createElement('button'), clock = document.createElement('span'), body = document.createElement('span'), title = document.createElement('strong'), description = document.createElement('p');
@@ -730,13 +755,13 @@
         // Keep visited descriptions open so losing focus cannot shrink rows above the viewport.
         button.onfocus = function () { guideWheelBrowsing = false; button.classList.add('expanded'); guideDateLabel(day(p.start)); };
         button.onclick = function () {
-            if(p.start > (netiaNow() || Date.now())) { $('guide-status').textContent=T("text.ta_audycja_jeszcze_sie_nie_rozpoczela"); return; }
-            if(player && selectedChannel===p.channelId) { if(!seekProgramme(p.start,p.end)) { $('guide-status').textContent=T("text.poczatek_audycji_jest_poza_dostepnym_buforem_netii"); return; } closeGuide(); $('video').play().catch(notice); }
+            if(p.start > (netiaNow() || Date.now())) { guideStatusNode().textContent=T("text.ta_audycja_jeszcze_sie_nie_rozpoczela"); return; }
+            if(player && selectedChannel===p.channelId) { if(!seekProgramme(p.start,p.end)) { guideStatusNode().textContent=T("text.poczatek_audycji_jest_poza_dostepnym_buforem_netii"); return; } closeGuide(); $('video').play().catch(notice); }
             else { closeGuide(); begin(p.channelId,p.start,p.end); }
         };
         return button;
     }
-    function guideStatus() { $('guide-status').textContent = T('guide.count',{count:guideItems.length});updateGuideProgress(); }
+    function guideStatus() { guideStatusNode().textContent = T('guide.count',{count:guideItems.length});updateGuideProgress(); }
     function updateGuideProgress(){
         if($('guide').hidden)return;
         var now=netiaNow()||Date.now(),p=TVModel.at(guideItems,now),value=p?Math.max(0,Math.min(100,(now-p.start)/(p.end-p.start)*100)):0;
@@ -754,7 +779,7 @@
     function extendGuide(offset, keyboard) {
         if (guideLoading || $('guide').hidden || $('guide-search').value.trim()) return;
         var date = day(Date.parse((offset < 0 ? guideFirst : guideLast) + 'T12:00:00Z') + offset * 86400000), current = guideGeneration;
-        guideLoading = true; $('guide-status').textContent = T("text.pobieranie_kolejnego_dnia");
+        guideLoading = true; guideStatusNode(true).textContent = T("text.pobieranie_kolejnego_dnia").replace(/\u2026$/,'');
         rpc('programs', {id: guideChannel, date: date}).then(function (items) {
             if (current !== guideGeneration) return;
             guideLoading = false;
@@ -789,7 +814,7 @@
     function renderGuide() {
         var visible = TVModel.channels(channelItems, prefs, 'all').map(function (c) { return c.id; });
         var items = TVModel.search(guideItems.filter(function (p) { return visible.indexOf(p.channelId) >= 0; }), $('guide-search').value);
-        $('guide-status').textContent = T('guide.count',{count:items.length});updateGuideProgress(); $('guide-items').textContent = '';
+        guideStatusNode().textContent = T('guide.count',{count:items.length});updateGuideProgress(); $('guide-items').textContent = '';
         var fragment = document.createDocumentFragment(); items.forEach(function(p){fragment.appendChild(guideButton(p));}); $('guide-items').appendChild(fragment);markGuideDays();updateGuideProgress(); queueGuideScroll();
     }
     function back() {
@@ -801,7 +826,7 @@
         libraryImageFrame=requestAnimationFrame(function(){
             libraryImageFrame=0;if(screen!=='library'||libraryError)return;
             var waiting=libraryNodes.some(function(node){var image=node.querySelector('img');return image.dataset.imagePending==='true'||image.dataset.imageQueued==='true';});
-            $('library-results').setAttribute('aria-busy',String(libraryLoading||waiting));
+            libraryBusy(libraryLoading||waiting);
             $('library-status').textContent=T('library.count',{visible:libraryNodes.filter(function(node){return !node.hidden;}).length,total:libraryItems.length})+(libraryLoading?T('text.wczytywanie_calej_listy'):'');
         });
     }
@@ -848,7 +873,7 @@
         });
         if(group.length)groups.push(group);
         function next(index){if(revision!==libraryImageRevision||view!==libraryGeneration||screen!=='library'||index===groups.length)return;return Promise.all(groups[index].map(loadLibraryImage)).then(function(){return next(index+1);});}
-        next(0);updateLibraryImageStatus();
+        libraryBackdropGate.then(function(){next(0);});updateLibraryImageStatus();
     }
     function orderLibrary(){
         filterLibrary();
@@ -914,12 +939,19 @@
         if(details.hideDescription===true)$('library-hero').hidden=true;
         if(!src||image.dataset.imageSource!==src||!image.complete||!image.naturalWidth){image.hidden=true;background.hidden=true;}
         image.onerror=function(){image.hidden=true;background.hidden=true;};
-        if(src)setImage(image,src).then(function(loaded){
-            if(!loaded||key!==libraryKey()||libraryId===undefined||image.dataset.imageSource!==src)return;
-            background.classList.toggle('thumbnail-background',!details.backdrop&&!!details.image);fitLibraryBackdrop();image.hidden=false;background.hidden=false;
-        });
+        // The backdrop waits for the episode tiles (startLibraryBackdrop); thumbnails wait for the backdrop.
+        var release;libraryBackdropGate=src?new Promise(function(resolve){release=resolve;}):Promise.resolve();
+        libraryBackdropJob=src?function(){
+            var show=setImage(image,src).then(function(loaded){
+                if(!loaded||key!==libraryKey()||libraryId===undefined||image.dataset.imageSource!==src)return;
+                background.classList.toggle('thumbnail-background',!details.backdrop&&!!details.image);fitLibraryBackdrop();image.hidden=false;background.hidden=false;
+            }).catch(function(){});
+            Promise.race([show,new Promise(function(resolve){setTimeout(resolve,3000);})]).then(release);
+        }:null;
         fitLibraryDescription();
     }
+    var libraryBackdropGate=Promise.resolve(),libraryBackdropJob=null;
+    function startLibraryBackdrop(){var job=libraryBackdropJob;libraryBackdropJob=null;if(job)job();}
     function fitLibraryDescription(){
         var description=$('library-description');
         if(libraryId===undefined||!description.clientWidth)return;
@@ -968,7 +1000,7 @@
         if(later)librarySaveTimer=setTimeout(save,2000);else save();
     }
     function loadLibrary(append,refresh){
-        var current=++libraryGeneration,offset=append?libraryNext:0;libraryError=false;libraryLoading=true;$('library-results').setAttribute('aria-busy','true');
+        var current=++libraryGeneration,offset=append?libraryNext:0;libraryError=false;libraryLoading=true;libraryBusy(true);
         $('library-title').textContent=libraryTrail.length?libraryTrail[libraryTrail.length-1].title:libraryKind==='series'?T("library.series"):T("library.shows");
         if(!append){
             libraryScope=preferenceKey;if(refresh)delete libraryCache[libraryKey()];
@@ -977,7 +1009,7 @@
             $('library-grid').textContent='';
             if(cached){
                 var cachedFocus=cached.nodes[cached.focus];libraryItems=cached.items;libraryNodes=cached.nodes;libraryNext=cached.next;libraryLoading=libraryNext!==null;
-                $('library-search').value=cached.search;orderLibrary();
+                $('library-search').value=cached.search;orderLibrary();startLibraryBackdrop();
                 if(cachedFocus&&!cachedFocus.hidden)focusControl(cachedFocus);
                 if(cached.sort===libraryMode())scrollLibrary(cached.scroll,false);else if(cachedFocus)alignLibrary(cachedFocus);
                 updateLibraryImageStatus();
@@ -1011,11 +1043,11 @@
                 };
                 libraryNodes.push(button);$('library-grid').appendChild(button);
             });
-            libraryLoading=libraryNext!==null;orderLibrary();updateLibraryImageStatus();
+            libraryLoading=libraryNext!==null;orderLibrary();startLibraryBackdrop();updateLibraryImageStatus();busySpinner();
             if(saveKey&&!libraryLoading&&!data.saved)saveLibrary();
             if(!append&&document.activeElement===$('library-back')){var first=$('library-grid').querySelector('.library-card:not([hidden])');if(first)focusControl(first);}
             if(libraryLoading)return loadLibrary(true);
-        }).catch(function(error){if(current!==libraryGeneration)return;libraryError=true;libraryLoading=false;$('library-results').setAttribute('aria-busy','false');$('library-status').textContent=T("text.nie_udalo_sie_pobrac_calej_oferty_uzyj_przycisku");if(libraryId!==undefined)$('library-description').textContent=T('library.detailsError');notice(error);});
+        }).catch(function(error){if(current!==libraryGeneration)return;libraryError=true;libraryLoading=false;libraryBusy(false);$('library-status').textContent=T("text.nie_udalo_sie_pobrac_calej_oferty_uzyj_przycisku");if(libraryId!==undefined)$('library-description').textContent=T('library.detailsError');notice(error);});
     }
     $('library-search').oninput=filterLibrary;
     $('library-sort').onchange=function(){if(libraryId===undefined){prefs.librarySort[libraryKind]=this.value;savePreferences();}else libraryEpisodeSort=this.value;orderLibrary();};
@@ -1057,6 +1089,8 @@
             phase='verify';loginStage(T("text.weryfikacja_sesji_i_bezpieczne_zapisywanie_konta"));return rpc('acceptFrameSession', data).then(function () { if (attempt !== pendingLogin) return; phase='profiles';return profiles().then(function(){if(attempt===pendingLogin)clearLogin();}); });
         }).catch(function (error) {
             if (attempt !== pendingLogin) return;
+            // Netia rejected the imported session: forget it and show the login screen (the frame is not an option here).
+            if (imported && phase==='verify') { clearLogin(); show('login'); return (/^(NETWORK|BUSY|STALE_REQUEST)$/.test(error.message)?Promise.resolve():rpc('discardImportedSession').catch(function(){})).then(function(){ throw error; }); }
             if (retry !== false && phase!=='profiles' && (/^(INVALID_SESSION|RPC_13404|LOGIN_REQUIRED)$/.test(error.message)||phase==='verify'&&error.message==='RPC_13572')) return NetiaFrameLogin.forget().then(function () { if(attempt===pendingLogin)return officialLogin(false,injected,false,error.message==='RPC_13572'); },function(cleanupError){if(attempt!==pendingLogin)return;clearLogin();show('login');throw cleanupError;});
             if (retry !== false && phase==='frame' && error.message === 'RPC_13572') return officialLogin(false,injected,false,true);
             clearLogin(); show('login'); throw error;

@@ -247,6 +247,7 @@
   "player.next": "Następny odcinek lub audycja",
   "player.nextNow": "Odtwórz teraz",
   "player.nextIn": "Następny odcinek za {seconds} s",
+  "epg.progress": "Pobieranie programu TV: {done} z {total} kanałów",
   "options.autonext": "Autoodtwarzanie odcinków",
   "options.help.autonext": "W serialach i programach po zakończeniu odcinka odlicza 10 sekund i włącza następny. Można to też zmienić zębatką w odtwarzaczu."
 }

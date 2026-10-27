@@ -1,4 +1,4 @@
-# netiOS installer for Windows: finds LG webOS TVs on the local network, installs the latest netiOS over SSH (telnet fallback) and shows
+﻿# netiOS installer for Windows: finds LG webOS TVs on the local network, installs the latest netiOS over SSH (telnet fallback) and shows
 # the Homebrew Channel repository address. Requires a TV with Homebrew Channel (root) and SSH or telnet enabled.
 param([string]$Repo = 'magoowa/netiOS', [string]$Tv = '', [string]$Ipk = '', [switch]$Telnet, [switch]$ImportSession)
 $ErrorActionPreference = 'Stop'
@@ -50,7 +50,7 @@ function Test-Port([string]$address, [int]$port) {
 }
 # Fallback for TVs with SSH off: Homebrew Channel's root telnet (port 23, no password). Minimal client: refuses every
 # option the server proposes, sends the command and prints the output until the connection closes.
-function Invoke-Telnet([string]$address, [string]$command) {
+function Invoke-Telnet([string]$address, [string]$command, [switch]$Quiet) {
     $client = New-Object System.Net.Sockets.TcpClient($address, 23); $stream = $client.GetStream(); $stream.ReadTimeout = 300000
     $line = [Text.Encoding]::ASCII.GetBytes("$command; exit`r`n"); $sent = $false; $output = New-Object System.Text.StringBuilder; $buffer = New-Object byte[] 4096
     try { while ($true) {
@@ -61,7 +61,7 @@ function Invoke-Telnet([string]$address, [string]$command) {
             if ($buffer[$i] -eq 255 -and $i + 2 -lt $n -and $buffer[$i + 1] -ge 251) { $reply = [byte[]](255, $(if ($buffer[$i + 1] -in 251, 252) { 254 } else { 252 }), $buffer[$i + 2]); $stream.Write($reply, 0, 3); $i += 2 }
             else { $text.Add($buffer[$i]) }
         }
-        $chunk = [Text.Encoding]::UTF8.GetString($text.ToArray()); [void]$output.Append($chunk); Write-Host -NoNewline $chunk
+        $chunk = [Text.Encoding]::UTF8.GetString($text.ToArray()); [void]$output.Append($chunk); if (-not $Quiet) { Write-Host -NoNewline $chunk }
     } } catch { } finally { $client.Close() }
     return $output.ToString()
 }
@@ -151,11 +151,14 @@ if ($ImportSession) {
     # Short echo chunks: the telnet shell's line editor copes badly with very long lines.
     $dir = '/media/internal/com.netiago.webos'; $parts = @("umask 077; mkdir -p $dir; : > /tmp/netios-session.b64")
     for ($i = 0; $i -lt $b64.Length; $i += 400) { $parts += "echo $($b64.Substring($i, [Math]::Min(400, $b64.Length - $i))) >> /tmp/netios-session.b64" }
-    $parts += "base64 -d /tmp/netios-session.b64 > $dir/import-session.json && rm /tmp/netios-session.b64 && echo NETIOS_SESSION_READY"
+    # The service runs as its own unprivileged user on webOS 4 (root on 5): start it, then hand it the folder and file.
+    $parts += "base64 -d /tmp/netios-session.b64 > $dir/import-session.json && rm /tmp/netios-session.b64"
+    $parts += "luna-send -n 1 luna://com.netiago.webos.service/status '{}' </dev/null >/dev/null 2>&1; P=`$(ps -ef | grep '[c]om.netiago.webos.service' | awk '{print `$2}' | head -1); [ -n `"`$P`" ] && chown -R `$(awk '/^Uid:/{print `$2}' /proc/`$P/status):`$(awk '/^Gid:/{print `$2}' /proc/`$P/status) $dir"
+    $parts += "test -s $dir/import-session.json && echo NETIOS_SESSION_`"`"READY"  # split so the echoed command line cannot match
     if (-not $Telnet -and (Test-Port $Tv 22)) {
         Write-Host "Łączę z $Tv przez SSH jako root (domyślne hasło: alpine)."
         ssh -tt -o StrictHostKeyChecking=accept-new "root@$Tv" ($parts -join '; '); $ok = $LASTEXITCODE -eq 0
-    } elseif (Test-Port $Tv 23) { $ok = (Invoke-Telnet $Tv ($parts -join '; ')) -match 'NETIOS_SESSION_READY' }
+    } elseif (Test-Port $Tv 23) { Write-Host "Przekazuję sesję na $Tv przez telnet..."; $ok = (Invoke-Telnet $Tv ($parts -join '; ') -Quiet) -match 'NETIOS_SESSION_READY' }
     else { Write-Host 'TV nie odpowiada na SSH (22) ani telnet (23).' -ForegroundColor Red; exit 1 }
     if (-not $ok) { Write-Host 'Nie udało się przekazać sesji.' -ForegroundColor Red; exit 1 }
     Write-Host 'Gotowe. Uruchom netiOS na telewizorze (lub uruchom go ponownie) - zaloguje się tą sesją.' -ForegroundColor Green
@@ -184,6 +187,8 @@ if ($Ipk) {
     if (-not (Test-Path -LiteralPath $Ipk -PathType Leaf)) { Write-Host "Nie ma pliku $Ipk." -ForegroundColor Red; exit 1 }
     $setupFile = Join-Path $PSScriptRoot 'tv-setup.sh'
     $setup = $(if (Test-Path -LiteralPath $setupFile) { [IO.File]::ReadAllBytes($setupFile) } else { (Invoke-WebRequest -UseBasicParsing $script).RawContentStream.ToArray() })
+    # BusyBox sh on the TV needs LF line ends; a copy extracted or edited on Windows may carry CRLF.
+    $setup = [Text.Encoding]::UTF8.GetBytes(([Text.Encoding]::UTF8.GetString($setup)).Replace("`r`n", "`n"))
     $payload = [byte[]]($setup + [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Ipk).Path))
     # The TV has no listening netcat, so Node receives tv-setup.sh + the IPK on port 5599 while this PC pushes them;
     # the bootstrap travels base64-encoded so no quoting survives the SSH/telnet command line.
@@ -202,7 +207,10 @@ if (-not $Telnet -and (Test-Port $Tv 22)) {
     $ok = $LASTEXITCODE -eq 0
 } elseif (Test-Port $Tv 23) {
     Write-Host "SSH jest niedostępne, łączę z $Tv przez telnet (Homebrew Channel)."
-    $ok = (Invoke-Telnet $Tv $remote) -match 'NETIOS_INSTALLED'
+    # The telnet shell echoes the (base64) command; only tv-setup.sh's own progress lines are shown.
+    $result = Invoke-Telnet $Tv $remote -Quiet
+    ($result -split "`r?`n") | Where-Object { $_ -match '^(netiOS:|NETIOS_INSTALLED)' } | ForEach-Object { Write-Host $_.Trim() }
+    $ok = $result -match 'NETIOS_INSTALLED'
 } else { Write-Host 'TV nie odpowiada na SSH (22) ani telnet (23). Włącz jedno z nich w Homebrew Channel.' -ForegroundColor Red; exit 1 }
 if ($push) { Stop-Job $push; Remove-Job $push -Force }
 if (-not $ok) { Write-Host 'Instalacja nie powiodła się.' -ForegroundColor Red; exit 1 }

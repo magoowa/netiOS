@@ -1,5 +1,5 @@
 'use strict';
-require('./compat');
+var compare = require('./compat').compare;
 var https = require('https');
 var crypto = require('crypto');
 var URL = require('url').URL;
@@ -167,7 +167,6 @@ Provider.prototype.list = function () {
         return batch().then(function () {
             if (generation !== self.generation) throw new Error('STALE_REQUEST');
             self.channels = candidates.filter(function (c) { return granted[productKey(c.product)] === true; });
-            var compare = new Intl.Collator('pl', {sensitivity: 'base', numeric: true}).compare;
             self.channels.sort(function (a, b) { return compare(a.title, b.title) || String(a.id).localeCompare(String(b.id)); });
             return self.channels.map(function (c) { return {id: c.id, title: c.title, logo: logoUrl(c), lcn:Number.isInteger(c.lcn)&&c.lcn>0?c.lcn:null,sourceOrder:candidates.indexOf(c),category: Array.isArray(c.genres)&&typeof c.genres[0]==='string'?c.genres[0].slice(0,80):null}; });
         });
@@ -327,7 +326,10 @@ Provider.prototype.programs = function (id, date) {
     var selected = id === undefined ? self.channels : self.channels.filter(function (c) { return c.id === id; });
     if (id !== undefined && !selected.length) return self.knownChannel(id).then(function (channel) { if (!channel) throw new Error('NOT_ENTITLED'); return self.programs(id, date); });
     if (date !== undefined && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) return Promise.reject(new Error('INVALID_DATE'));
+    // Progress of the all-channel load (programsProgress): it takes one request per 12 channels.
+    if (id === undefined) self.programsProgress = {done: 0, total: selected.length};
     function batch() {
+        if (id === undefined && generation === self.generation) self.programsProgress = {done: offset, total: selected.length};
         var channels = selected.slice(offset, offset + 12); offset += channels.length;
         if (!channels.length) return Promise.resolve(result);
         var params = {channelIds: channels.map(function (c) { return c.id; })};
@@ -343,7 +345,7 @@ Provider.prototype.programs = function (id, date) {
             return batch();
         });
     }
-    return batch().then(function (items) { return items.sort(function (a, b) { return a.start - b.start || a.channelTitle.localeCompare(b.channelTitle, 'pl'); }); });
+    return batch().then(function (items) { return items.sort(function (a, b) { return a.start - b.start || compare(a.channelTitle, b.channelTitle); }); });
 };
 Provider.prototype.play = function (id, capabilities, kind) {
     var self = this, channel = kind==='vod' ? self.vodMedia && self.vodMedia[id] : self.channels.find(function (c) { return c.id === id; }), generation = self.generation;

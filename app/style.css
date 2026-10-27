@@ -2479,10 +2479,11 @@ html { overflow: hidden; }
 .next-up-thumbnail { width: 288px; height: 162px; border-radius: 12px; overflow: hidden; background: #22262d; }
 .next-up-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .next-up-thumbnail img[hidden] { display: none; }
-.next-up-text { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
-#next-up-count { margin: 0; font-size: 24px; color: #aab1bd; font-variant-numeric: tabular-nums; }
+.next-up-text { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+#next-up-count { margin: 0 0 10px; font-size: 24px; color: #aab1bd; font-variant-numeric: tabular-nums; }
 #next-up-title { margin: 0; font-size: 29px; line-height: 36px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.next-up-actions { grid-column: 1 / -1; display: flex; gap: 16px; }
+.next-up-actions { grid-column: 1 / -1; display: flex; }
+.next-up-actions button + button { margin-left: 16px; }
 .next-up-actions button { font-size: 24px; padding: 10px 22px; }
 #autonext-heading[hidden] { display: none; }
 
@@ -2491,3 +2492,64 @@ html { overflow: hidden; }
 .avatar-1 { background-color: #386e91; }
 .avatar-2 { background-color: #915b77; }
 .avatar-3 { background-color: #477d72; }
+
+/* Older webOS (Chromium < 57, e.g. webOS 4): no CSS Grid. main.js marks <html class="legacy">; these flexbox layouts give
+   the same columns, so tiles keep their size, channels stay six to a row and dialogs keep their columns. */
+.legacy #channel-scroll, .legacy #library-results { overflow-x: hidden; }
+.legacy .channel-grid, .legacy #library-grid { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: flex-start; margin-right: -20px; }
+.legacy .channel-grid > * { width: calc(16.6667% - 20px); margin: 0 20px 20px 0; }
+.legacy #library-grid > * { width: calc(20% - 20px); margin: 0 20px 20px 0; }
+.legacy .channel-grid > .channel-category, .legacy #library-grid > .library-group { width: calc(100% - 20px); }
+.legacy .channel-toolbar { display: flex; }
+.legacy .channel-toolbar > :first-child { flex: 1 1 auto; min-width: 0; }
+.legacy .channel-toolbar > :last-child { flex: 0 0 250px; margin-left: 16px; }
+.legacy .settings-columns { display: flex; }
+.legacy .settings-columns > div { flex: 1 1 0; min-width: 0; margin-right: 36px; }
+.legacy .settings-columns > div:first-child { flex: 0 0 240px; }
+.legacy .settings-columns > div:last-child { flex: 0 0 220px; margin-right: 0; }
+.legacy #diagnostics-data { display: flex; flex-wrap: wrap; }
+.legacy #diagnostics-data dt { flex: 0 0 420px; }
+.legacy #diagnostics-data dd { flex: 0 0 calc(100% - 444px); margin-left: 24px; }
+.legacy #next-up { display: flex; flex-wrap: wrap; }
+.legacy .next-up-thumbnail { flex: 0 0 288px; }
+.legacy .next-up-text { flex: 1 1 0; margin-left: 26px; }
+.legacy .next-up-actions { flex: 0 0 100%; margin-top: 22px; }
+
+/* Work in progress: animated dots after login stages and the splash, a spinner while a video or a catalogue loads. */
+.working::after { content: '...'; display: inline-block; width: 0; overflow: hidden; vertical-align: bottom; animation: working-dots 1.2s steps(4) infinite; }
+@keyframes working-dots { to { width: 1.1em; } }
+#busy-spinner { position: fixed; top: 50%; left: 50%; width: 160px; height: 160px; margin: -80px 0 0 -80px; z-index: 10001; border: 14px solid rgba(255,255,255,.18); border-top-color: #00b7c7; border-radius: 50%; animation: spin .9s linear infinite; pointer-events: none; will-change: transform; }
+#busy-spinner[hidden] { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Player settings: 15% smaller window and type; picture quality and subtitle size are short lists, so their columns are
+   narrow and audio/subtitles get the room. */
+.settings-dialog { width: 1275px; padding: 28px; }
+.settings-dialog .dialog-header h2 { font-size: 27px; }
+.settings-columns { grid-template-columns: 240px minmax(0,1fr) 220px; grid-gap: 36px; margin-top: 20px; }
+.settings-columns h3 { font-size: 22px; margin: 10px 0 14px; }
+.settings-columns h3 + div + h3 { margin-top: 26px; }
+.settings-columns button { font-size: 21px; padding: 9px 15px; margin: 3px 0; }
+.settings-columns p { font-size: 19px; }
+
+/* Dialogs (Options, Diagnostics, player settings): a soft diagonal gradient instead of a flat grey. */
+.dialog { background: #2b2d30; background: linear-gradient(155deg, #393c42 0%, #2a2c30 45%, #1c1e21 100%); box-shadow: 0 18px 60px rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.06); }
+#channel-menu #autonext-toggle[aria-pressed=true] { background: transparent; color: #b9bec4; }
+#channel-menu #autonext-toggle:focus { background: #12343a; color: #fff; }
+/* The window is as wide as its columns: quality and OLED Saver on the left, audio and subtitles in a middle column as wide
+   as the longest option (at least 320 px), subtitle size on the right. No empty band in the middle. */
+.settings-dialog { width: auto; }
+.settings-columns { grid-template-columns: 240px minmax(320px, max-content) 220px; }
+.settings-columns > div:nth-child(2) { max-width: 560px; }
+.legacy .settings-columns > div:nth-child(2) { flex: 0 0 auto; min-width: 320px; }
+/* OLED Saver: one row under the columns, all choices side by side. */
+.settings-oled { display: flex; align-items: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.08); }
+.settings-oled h3 { margin: 0 24px 0 0; font-size: 22px; white-space: nowrap; }
+.settings-oled button { display: inline-block; width: auto; margin: 0 8px 0 0; padding: 9px 18px; border: 0; border-radius: 7px; font-size: 21px; }
+
+/* First programme load: progress in the channel header's top-right corner. */
+#channel-hero { position: relative; }
+#epg-progress { position: absolute; top: 4px; right: 0; width: 420px; font-size: 20px; line-height: 26px; color: #aab1bd; text-align: right; }
+#epg-progress[hidden] { display: none; }
+.epg-bar { display: block; height: 6px; margin-top: 8px; border-radius: 3px; background: rgba(255,255,255,.14); overflow: hidden; }
+#epg-progress-fill { display: block; width: 0; height: 100%; background: #00b7c7; transition: width .3s ease-out; }

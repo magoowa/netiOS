@@ -2,11 +2,11 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),zlib=require('node:zlib'),assert=require('node:assert/strict');
 const {execFileSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
-const topFiles=['.gitignore','README.md','CHANGELOG.md','SECURITY.md','CONTRIBUTING.md','package.json','package-lock.json'];
+const topFiles=['.gitignore','.gitattributes','README.md','CHANGELOG.md','SECURITY.md','CONTRIBUTING.md','package.json','package-lock.json'];
 const directories=['app','service','tools','tests','config','docs','.github'];
 // docs/ also holds the private working journal (diagnoses, acceptance notes, plans, docs/en originals); only these
 // user-facing documents and the demonstration screenshots are published.
-const publicDocs=/^docs\/(?:USER_CONFIGURATION|THIRD-PARTY|TESTING|PUBLICATION)\.md$|^docs\/screenshots\/[a-z-]+\.png$/;
+const publicDocs=/^docs\/(?:USER_CONFIGURATION|THIRD-PARTY|TESTING|PUBLICATION|INSTALL)\.md$|^docs\/screenshots\/[a-z-]+\.png$/;
 function sources(directory=root){
     const files=[];
     function walk(relative){for(const item of fs.readdirSync(path.join(directory,relative),{withFileTypes:true})){
@@ -60,13 +60,17 @@ function release(){
     const entries=inspectPackage(bytes,needles),hash=crypto.createHash('sha256').update(bytes).digest('hex');
     const manifest=JSON.parse(fs.readFileSync(path.join(dist,'com.netiago.webos.manifest.json')));
     assert.equal(manifest.version,version);assert.equal(manifest.ipkHash.sha256,hash);assert.equal(manifest.ipkUrl,ipk);
-    for(const target of [output,checkout]){
+    // An export that already is a published repository (it has .git) is updated in place: its files are replaced and the
+    // release becomes one more commit on its history, so the push fast-forwards. Otherwise a fresh repository is created.
+    const published=fs.existsSync(path.join(checkout,'.git'));
+    for(const target of published?[output]:[output,checkout]){
         assert(target.startsWith(dist+path.sep));
         if(fs.existsSync(target)){
             const archive=path.join(root,'.local','archive','release-'+Date.now()+'-'+path.basename(target));fs.mkdirSync(path.dirname(archive),{recursive:true});fs.renameSync(target,archive);
         }
         fs.mkdirSync(target,{recursive:true});
     }
+    if(published)for(const item of fs.readdirSync(checkout))if(item!=='.git')fs.rmSync(path.join(checkout,item),{recursive:true,force:true});
     for(const name of [ipk,'com.netiago.webos.manifest.json','icon.png','SHA256SUMS'])fs.copyFileSync(path.join(dist,name),path.join(output,name));
     for(const file of files){const to=path.join(checkout,file);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(root,file),to);}
     // Homebrew Channel repository served from the published repository (raw files allow cross-origin reads); the IPK is a
@@ -78,16 +82,20 @@ function release(){
     const listing=JSON.stringify({paging:{page:1,count:1,maxPage:1,itemsTotal:1},packages:[{id:manifest.id,title:manifest.title,iconUri:raw+'icon.png',manifestUrl:raw+'com.netiago.webos.manifest.json',manifest:hosted,category:'multimedia',pool:'main',shortDescription:'Nieoficjalny klient Netia GO dla LG webOS'}]},null,2)+'\n';
     // repo.json is the same listing under the name repository tools commonly look for; apps.json stays for existing users.
     for(const name of ['apps.json','repo.json'])fs.writeFileSync(path.join(homebrew,name),listing);
-    execFileSync('git',['init','-b','main'],{cwd:checkout,stdio:'pipe'});
+    if(!published)execFileSync('git',['init','-b','main'],{cwd:checkout,stdio:'pipe'});
     execFileSync('git',['add','--all'],{cwd:checkout,stdio:'pipe'});
     for(const file of files.filter(f=>/\.(?:sh|command)$/.test(f)))execFileSync('git',['update-index','--chmod=+x',file],{cwd:checkout,stdio:'pipe'});
     // The export is authored by a neutral identity unless NETIOS_RELEASE_AUTHOR=git asks for the maintainer's own git identity.
     const own=process.env.NETIOS_RELEASE_AUTHOR==='git',config=key=>execFileSync('git',['config',key],{cwd:root,encoding:'utf8'}).trim();
     const name=own?config('user.name'):'netiOS Project',email=own?config('user.email'):'project@users.noreply.github.com';
-    execFileSync('git',['-c','user.name='+name,'-c','user.email='+email,'-c','commit.gpgsign=false','commit','-m','netiOS '+version+' reviewed source release'],{cwd:checkout,stdio:'pipe'});
-    execFileSync('git',['tag','v'+version],{cwd:checkout,stdio:'pipe'});
-    const archive=path.join(output,'netiOS-'+version+'-source.zip');execFileSync('git',['archive','--format=zip','--output',archive,'HEAD'],{cwd:checkout,stdio:'pipe'});
+    execFileSync('git',['-c','user.name='+name,'-c','user.email='+email,'-c','commit.gpgsign=false','commit','-m','netiOS '+version],{cwd:checkout,stdio:'pipe'});
+    execFileSync('git',['tag','-f','v'+version],{cwd:checkout,stdio:'pipe'});
+    const archive=path.join(output,'netiOS-'+version+'-source.zip');execFileSync('git',['-c','core.autocrlf=false','archive','--format=zip','--output',archive,'HEAD'],{cwd:checkout,stdio:'pipe'});
     const sourceHash=crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');fs.appendFileSync(path.join(output,'SHA256SUMS'),sourceHash+'  '+path.basename(archive)+'\n');
+    // Installer bundle: the scripts of tools/installer with this IPK beside them, so they install it without downloading.
+    const installer=path.join(output,'netiOS-'+version+'-installer.zip');
+    execFileSync('git',['-c','core.autocrlf=false','archive','--format=zip','--prefix=netiOS-'+version+'/','--add-file='+path.join(output,ipk),'--output',installer,'HEAD:tools/installer'],{cwd:checkout,stdio:'pipe'});
+    const installerHash=crypto.createHash('sha256').update(fs.readFileSync(installer)).digest('hex');fs.appendFileSync(path.join(output,'SHA256SUMS'),installerHash+'  '+path.basename(installer)+'\n');
     console.log('RELEASE_PASS version='+version+' sources='+files.length+' packageEntries='+entries+' sha256='+hash);
 }
 if(require.main===module)release();else module.exports={sources,pngClean,inspect,inspectPackage};

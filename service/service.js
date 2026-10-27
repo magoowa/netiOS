@@ -28,6 +28,17 @@ setInterval(function () {
         clearMemory(); service.activityManager.complete(activity, function () {}); activity = null;
     }
 }, 15000).unref();
+// Login trail for diagnosing a TV over telnet (cat /media/internal/com.netiago.webos/login.log): method names, results
+// and error codes only, never payloads, cookies or tokens. Kept under 16 KB.
+var LOGGED = ['importedSession', 'discardImportedSession', 'acceptFrameSession', 'login', 'profiles', 'selectProfile', 'status', 'logout'];
+function trail(line) {
+    var log = path.join(storage, 'login.log');
+    fs.stat(log, function (error, stat) {
+        var write = function () { fs.appendFile(log, Date.now() + ' ' + line + '\n', function () {}); };
+        if (!error && stat.size > 16384) fs.rename(log, log + '.1', write); else write();
+    });
+}
+trail('service start');
 function register(name, action, mutates) {
     service.register(name, function (message) {
         if (!own(message.sender)) return message.respond({returnValue: false, errorCode: 'FORBIDDEN'});
@@ -35,11 +46,15 @@ function register(name, action, mutates) {
         if (mutates) busy = true;
         keepAlive();
         Promise.resolve().then(function () { return action(message.payload || {}); }).then(function (data) {
+            if (LOGGED.indexOf(name) >= 0) trail(name + ' ok' + (name === 'importedSession' ? (data ? ' session' : ' none') : name === 'status' ? (data && data.loggedIn ? ' loggedIn' : ' loggedOut') : ''));
             if (mutates) busy = false;
             message.respond({returnValue: true, data: data === undefined ? null : data});
         }, function (error) {
             if (mutates) busy = false;
             var code = /^[A-Z_0-9-]+$/.test(error.message) ? error.message : 'INTERNAL_ERROR';
+            // Every failure is logged; an unexpected one adds its type, message and code location (no payloads).
+            var where = code === 'INTERNAL_ERROR' && error && error.stack ? ' ' + String(error.name) + ': ' + String(error.message).slice(0, 120) + ' @ ' + (String(error.stack).split('\n')[1] || '').trim().replace(/^.*\/(?=[^\/]+:\d+:\d+\)?$)/, '') : '';
+            trail(name + ' error ' + code + where);
             message.respond({returnValue: false, errorCode: code});
         });
     });
@@ -75,18 +90,20 @@ register('performance', function () {
 });
 register('login', function (p) { clearMemory(); return provider.login(p.username, p.password, p.captcha).then(function () { credentials = {username: p.username, password: p.password}; return true; }); }, true);
 register('rememberedAccount', function () { return account.load().then(function (saved) { rememberedProfile = saved && saved.profile ? saved.profile.id : null; return saved; }); });
-// One-time session handed over from a browser where the user logged in at go.netia.pl (tools/installer, -ImportSession):
-// the official form cannot run on webOS 4's Chromium 53. The file is removed on first read; acceptFrameSession validates it.
+// Session handed over from a browser where the user logged in at go.netia.pl (tools/installer, -ImportSession): the official
+// form cannot run on webOS 4's Chromium 53, so the file stays in the service's private folder and serves every start until
+// the session expires, Netia rejects it (discardImportedSession) or the user logs out. acceptFrameSession validates it.
+var importFile = path.join(storage, 'import-session.json');
+function discardImport() { return unlink(importFile).catch(function (error) { if (error.code !== 'ENOENT') throw new Error('IMPORT_DELETE'); }); }
 register('importedSession', function () {
-    var imported = path.join(storage, 'import-session.json');
-    return read(imported, 'utf8').then(function (text) {
-        return unlink(imported).then(function () {
-            var data; try { data = text.length <= 65536 && JSON.parse(text); } catch (error) { data = null; }
-            if (!data || typeof data !== 'object') throw new Error('INVALID_SESSION');
-            return {session: data.session, clientId: data.clientId, deviceId: data.deviceId};
-        });
+    return read(importFile, 'utf8').then(function (text) {
+        var data; try { data = text.length <= 65536 && JSON.parse(text); } catch (error) { data = null; }
+        var live = data && typeof data === 'object' && data.session && Number.isFinite(data.session.keyExpirationTime) && data.session.keyExpirationTime * 1000 > Date.now() + 60000;
+        if (!live) return discardImport().then(function () { return null; });
+        return {session: data.session, clientId: data.clientId, deviceId: data.deviceId};
     }, function (error) { if (error.code === 'ENOENT') return null; throw new Error('IMPORT_READ'); });
 }, true);
+register('discardImportedSession', function () { return discardImport().then(function () { return true; }); }, true);
 register('acceptFrameSession', function (p) {
     if ((p.username !== undefined || p.password !== undefined) && (typeof p.username !== 'string' || !p.username.trim() || p.username.length > 256 || p.password !== undefined && (typeof p.password !== 'string' || !p.password || p.password.length > 1024))) throw new Error('INVALID_CREDENTIALS');
     if(p.remember!==undefined && typeof p.remember!=='boolean')throw new Error('INVALID_CREDENTIALS');
@@ -121,6 +138,7 @@ register('catalog', function(p){return provider.catalog(p.kind,p.id,p.offset===u
 register('catalogArtwork', function(p){return provider.catalogArtwork(p.kind,p.id);});
 register('catalogDetails', function(p){return provider.catalogDetails(p.kind,p.id,p.refresh===true);});
 register('programs', function (p) { return provider.programs(p.id, p.date); });
+register('programsProgress', function () { return provider.programsProgress || null; });
 register('clock', function () {
     return provider.rpc('system', 'getConfiguration', {}, true).then(function () {
         if (!provider.clockSample) throw new Error('CLOCK_UNAVAILABLE');
@@ -159,6 +177,6 @@ register('unlock', function (p) {
 register('logout', function () {
     var revoke = provider.auth ? provider.rpc('auth', 'logout', {}).catch(function () {}) : Promise.resolve();
     clearMemory();
-    return account.signOut().then(function () { return unlink(file); }).catch(function (e) { if (e.code !== 'ENOENT') throw new Error('VAULT_DELETE'); }).then(function () { return revoke; }).then(function () { return true; });
+    return account.signOut().then(discardImport).then(function () { return unlink(file); }).catch(function (e) { if (e.code !== 'ENOENT') throw new Error('VAULT_DELETE'); }).then(function () { return revoke; }).then(function () { return true; });
 }, true);
 register('lock', function () { clearMemory(); return true; }, true);

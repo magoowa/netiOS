@@ -34,7 +34,7 @@ for (const directory of ['fonts', 'licenses']) {
 const png = fs.readFileSync(path.join(app, 'assets', 'icon.png'));
 assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
 fs.copyFileSync(path.join(app, 'assets', 'icon.png'), path.join(app, 'icon.png'));
-fs.writeFileSync(path.join(app,'version.js'), 'window.APP_VERSION='+JSON.stringify(require('../package.json').version)+';\n');
+fs.writeFileSync(path.join(app,'version.js'), 'window.APP_VERSION='+JSON.stringify(require('../package.json').version+(process.env.NETIOS_VERSION_SUFFIX||''))+';\n');
 const meta = JSON.parse(fs.readFileSync(path.join(app, 'appinfo.json')));
 assert.equal(JSON.parse(fs.readFileSync(path.join(service, 'services.json'))).id, meta.id + '.service');
 execFileSync(process.execPath, [require.resolve('@webos-tools/cli/bin/ares-package.js'), app, service, '-o', path.join(root, 'dist')], {stdio: 'inherit'});
