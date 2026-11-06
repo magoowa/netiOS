@@ -61,10 +61,10 @@ test('catalogue search works without channel fields and does not match absent me
  const items=[{title:'Żółw i świat'},{title:'Inny serial',description:'Opis'}];assert.deepEqual(m.search(items,'zolw swiat'),[items[0]]);assert.deepEqual(m.search(items,'undefined'),[]);
 });
 
-test('catalogue groups use the primary genre, retain every item once and omit empty search groups',()=>{
+test('catalogue groups list a title under every genre like Netia, untitled genres last, and omit empty search groups',()=>{
  const items=[{id:'a',title:'A',genres:['Dramat','Komedia']},{id:'b',title:'B',genres:['Dramat']},{id:'c',title:'C',genres:['Przyroda']},{id:'d',title:'D'}];
- const groups=m.catalogueGroups(items,'genres');assert.deepEqual(groups.map(g=>g.key),['Dramat','Przyroda','']);
- assert.deepEqual(groups.map(g=>g.items.length),[2,1,1]);assert.equal(new Set(groups.flatMap(g=>g.items.map(i=>i.id))).size,4);
+ const groups=m.catalogueGroups(items,'genres');assert.deepEqual(groups.map(g=>g.key),['Dramat','Komedia','Przyroda','']);
+ assert.deepEqual(groups.map(g=>g.items.map(i=>i.id)),[['a','b'],['a'],['c'],['d']]);assert.equal(new Set(groups.flatMap(g=>g.items.map(i=>i.id))).size,4);
  assert.deepEqual(m.catalogueGroups(m.search(items,'C'),'genres').map(g=>g.key),['Przyroda']);assert.deepEqual(m.catalogueGroups([], 'genres'),[]);
 });
 
@@ -77,6 +77,8 @@ test('seasons and episodes sort numerically, unknown seasons remain unnumbered a
 test('episode captions remove only repeated parent prefixes and retain single-item identification',()=>{
  assert.equal(m.episodeTitle('Policjanci – Policjanci odcinek 1308','Policjanci',10),'Odcinek 1308');
  assert.equal(m.episodeTitle('Gliniarze. Śląsk - Odcinek 2','Gliniarze. Śląsk',10),'Odcinek 2');
+ for(const marker of ['S2','S 12','Sezon 3','13','II'])assert.equal(m.episodeTitle('Policjanci '+marker+' - Odcinek 5','Policjanci',10),'Odcinek 5');
+ assert.equal(m.episodeTitle('Policjanci S2 - Pościg','Policjanci',10),'Policjanci S2 - Pościg');
  assert.equal(m.episodeTitle('Policjancię - Inny tytuł','Policjanci',10),'Policjancię - Inny tytuł');
  assert.equal(m.episodeTitle('nazwa bez prefiksu','Policjanci',10),'nazwa bez prefiksu');
  assert.equal(m.episodeTitle('Policjanci i ich rodziny','Policjanci',10),'Policjanci i ich rodziny');

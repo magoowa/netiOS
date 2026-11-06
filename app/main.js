@@ -1,7 +1,7 @@
 (function () {
     'use strict';
     // Older webOS (Chromium < 57) has no CSS Grid: style.css lays the same screens out with flexbox under .legacy.
-    var engine=/Chrome\/(\d+)/.exec(navigator.userAgent);if(engine&&+engine[1]<57)document.documentElement.classList.add('legacy');
+    var engine=/Chrome\/(\d+)/.exec(navigator.userAgent),legacyEngine=!!engine&&+engine[1]<57;if(legacyEngine)document.documentElement.classList.add('legacy');
     // On the TV (Chromium 68) every toLocale*String call and new Intl.DateTimeFormat builds a formatter (several ms each;
     // 575 ms measured when the guide added a day). Each format is created once and reused.
     var formats={time:new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Warsaw'}),clock:new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Europe/Warsaw'}),
@@ -36,6 +36,7 @@
     messages.INVALID_CREDENTIALS=T('errors.credentials');
     messages.STALE_REQUEST=T('errors.staleRequest');
     messages.INVALID_PAGINATION=T('errors.pagination');
+    messages.IMPORT_REQUIRED=T('login.importRequired');
     function rpc(method, params) {
         return new Promise(function (resolve, reject) {
             if (typeof WebOSServiceBridge === 'undefined') return reject(new Error('WEBOS_REQUIRED'));
@@ -80,7 +81,7 @@
     $('oled-minutes').value=String(oledMinutes);Array.prototype.forEach.call($('oled-minutes').options,function(option){option.textContent=T('options.minutes',{minutes:option.value});});
     $('oled-minutes').mdiUpdate();
     $('oled-minutes').onchange=function(){var value=Number(this.value);if([30,60,90,120].indexOf(value)<0)return;oledMinutes=value;oledLastActivity=Date.now();try{localStorage.setItem('netios-oled-minutes',String(value));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
-    var optionHelp={'menu-favorite':'options.help.favorite','menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','autonext-toggle':'options.help.autonext','menu-pin':'options.help.pin'};
+    var optionHelp={'menu-hide':'options.help.hide','menu-restore':'options.help.restore','refresh-button':'options.help.refresh','menu-profiles':'options.help.profiles','menu-close':'options.help.close','oled-toggle':'options.help.oled','oled-minutes':'options.help.oled','menu-diagnostics':'options.help.diagnostics','close-options':'options.help.closeMenu','smooth-toggle':'options.help.smooth','autonext-toggle':'options.help.autonext','autonext-seconds':'options.help.autonext','menu-pin':'options.help.pin'};
     // Help follows focus only; a real pointer move focuses the hovered option, while a dialog opening under a resting
     // pointer (Chromium's synthetic mouseenter) no longer swaps the help for an option that is not selected.
     Object.keys(optionHelp).forEach(function(id){$(id).onfocus=function(){$('option-help').textContent=T(optionHelp[id]);};});
@@ -102,7 +103,29 @@
     function loginStage(text){var busy=/(\u2026|\.\.\.)$/.test(text);text=text.replace(/(\u2026|\.\.\.)$/,'');['login-stage','splash-status'].forEach(function(id){$(id).textContent=text;$(id).classList.toggle('working',busy);});}
     // One large spinner in the middle of the screen while a video starts or a catalogue shows nothing yet.
     var playerConnecting=false;
-    function busySpinner(){$('busy-spinner').hidden=!(playerConnecting&&screen==='player'||screen==='library'&&libraryLoading&&!libraryNodes.length);}
+    // A timer, not requestAnimationFrame, drives it: webOS stops animation frames while a video starts.
+    // One loading indicator for the whole app shows how far a load has got: each load reports its stages, the ring fills
+    // to the stage reached and creeps on within the current one, never past its end before that stage is done.
+    var progressStages={player:4,profile:4,library:1},progress={key:null,stage:0,shown:0,frame:0,finish:0};
+    (function(){var host=$('busy-spinner');host.innerHTML='<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="busy-track" cx="50" cy="50" r="42"/><circle class="busy-arc" cx="50" cy="50" r="42"/></svg><span class="busy-percent"></span>';})();
+    function progressStep(key,stage){if(progress.key===key&&stage>progress.stage)progress.stage=Math.min(stage,progressStages[key]);}
+    function paintLoading(){
+        var host=$('busy-spinner'),total=progressStages[progress.key]||1,base=progress.stage/total,limit=Math.min(1,(progress.stage+0.92)/total);
+        progress.shown=progress.shown<base-0.005?progress.shown+(base-progress.shown)*0.25:Math.max(progress.shown,base)+(limit-Math.max(progress.shown,base))*0.03;
+        var length=2*Math.PI*42;host.querySelector('.busy-arc').style.strokeDasharray=(length*progress.shown).toFixed(1)+' '+length.toFixed(1);
+        host.querySelector('.busy-percent').textContent=Math.floor(progress.shown*100)+'%';
+        progress.frame=setTimeout(paintLoading,33);
+    }
+    function busySpinner(){
+        var key=playerConnecting&&screen==='player'?'player':!!profileChosen&&screen==='profiles'?'profile':screen==='library'&&libraryLoading&&!libraryNodes.length?'library':null;
+        if(key===progress.key)return;
+        var host=$('busy-spinner'),was=progress.key;clearTimeout(progress.frame);progress.frame=0;clearTimeout(progress.finish);progress.key=key;
+        if(key){progress.stage=0;progress.shown=0;host.hidden=false;paintLoading();return;}
+        // A finished load fills the ring before it goes, so the end is seen rather than a ring vanishing half way.
+        if(!was||host.hidden){host.hidden=true;return;}
+        var length=2*Math.PI*42;host.querySelector('.busy-arc').style.strokeDasharray=length.toFixed(1)+' '+length.toFixed(1);host.querySelector('.busy-percent').textContent='100%';
+        progress.finish=setTimeout(function(){if(!progress.key)host.hidden=true;},220);
+    }
     function libraryBusy(value){$('library-results').setAttribute('aria-busy',String(value));busySpinner();}
     function run(action) {
         if (busy) return Promise.resolve(); busy = true; notice();
@@ -110,6 +133,8 @@
     }
     function time(value) { return formats.time.format(new Date(value)); }
     function day(value) {
+        // Chromium 53 (webOS 4) has no formatToParts; the en format of dayKey is MM/DD/YYYY.
+        if (typeof formats.dayKey.formatToParts !== 'function') { var m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(formats.dayKey.format(new Date(value))); return m[3] + '-' + m[1] + '-' + m[2]; }
         var parts = formats.dayKey.formatToParts(new Date(value)), values = {};
         parts.forEach(function (p) { values[p.type] = p.value; }); return values.year + '-' + values.month + '-' + values.day;
     }
@@ -136,17 +161,45 @@
             var items = results[0], saved = results[1];
             var automatic = items.length === 1 ? items[0] : items.find(function (p) { return saved && p.id === saved.id; });
             if (force !== true && automatic) return rpc('selectProfile', {id: automatic.id, remember: true}).then(channels);
-            show('profiles'); $('remember-profile').checked=!!saved; $('profile-list').textContent = '';
+            show('profiles'); $('profile-list').textContent = '';
+            var savedId=saved&&saved.id,start=null;
             items.forEach(function (p, i) {
                 var button = document.createElement('button'), avatar = document.createElement('span'), name = document.createElement('span');
                 avatar.className = 'profile-avatar avatar-' + i % 4;
                 avatar.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="30" r="19"/><path d="M18 88c0-39 64-39 64 0"/></svg>';
+                var mark=document.createElement('span');mark.className='profile-auto';mark.setAttribute('aria-hidden','true');avatar.appendChild(mark);if(p.id===savedId)start=button;
                 name.className = 'profile-name'; name.textContent = p.name; button.appendChild(avatar); button.appendChild(name);
-                button.onclick = function () { run(function () { return rpc('selectProfile', {id: p.id, remember: $('remember-profile').checked}).then(channels); }); };
+                button.dataset.profile=p.id;button.dataset.name=p.name;
+                button.addEventListener('focus',function(){lastProfile=button;if(choosingDefault)markAutomatic();});
+                button.onclick = function () {
+                    if(busy)return;
+                    // While the box is being set, a press only confirms the default profile; the next press picks who watches.
+                    if(choosingDefault){choosingDefault=false;automaticProfile=p.id;markAutomatic();return;}
+                    profileLoading(button);run(function () { return rpc('selectProfile', {id: p.id, remember: automaticProfile===p.id, automatic: automaticProfile}).then(function(){progressStep('profile',1);return channels();}); }).then(function(){profileLoading(null);});
+                };
                 $('profile-list').appendChild(button);
+                // The icon is sized from the font it is shown in, so it is made once the mark is on the page.
+                setIcon(mark,'autorenew');
             });
-            if (!items.length) throw new Error('NO_PROFILES'); $('profile-list').firstChild.focus();
+            if (!items.length) throw new Error('NO_PROFILES'); automaticProfile=start?savedId:null;choosingDefault=false;lastProfile=start;markAutomatic();(start||$('profile-list').firstChild).focus();
         });
+    }
+    // Default profile, in two steps: checking the box starts choosing (the autorenew mark follows focus), a press on a
+    // profile confirms it, and only the press after that picks the profile to watch. Clearing the box leaves no default.
+    var automaticProfile=null,choosingDefault=false,profileChosen=null,lastProfile=null;
+    $('remember-profile').addEventListener('change',function(){if(this.checked)choosingDefault=true;else{choosingDefault=false;automaticProfile=null;}markAutomatic();});
+    function cancelDefaultChoice(){if(!choosingDefault)return false;choosingDefault=false;markAutomatic();return true;}
+    function markAutomatic(){
+        var target=choosingDefault?lastProfile&&lastProfile.dataset.profile:automaticProfile,targetName=null;
+        Array.prototype.forEach.call(document.querySelectorAll('#profile-list button'),function(button){var mark=button.querySelector('.profile-auto'),active=!!target&&button.dataset.profile===target;if(active)targetName=button.dataset.name;mark.classList.toggle('is-off',!active);if(active)mark.title=T('profiles.automatic');else mark.removeAttribute('title');});
+        $('remember-profile').checked=choosingDefault||!!automaticProfile;$('profiles').classList.toggle('choosing-default',choosingDefault);
+        var label=$('profile-default-label');label.textContent=T('text.zapamietaj_wybrany_profil')+(targetName?': ':'');
+        if(targetName){var named=document.createElement('span');named.className='profile-default-name';named.textContent=targetName;label.appendChild(named);}
+        $('profile-hint').textContent=T(choosingDefault?'profiles.pickDefault':'profiles.pickWatch');
+    }
+    function profileLoading(button){
+        if(profileChosen)profileChosen.classList.remove('is-chosen');profileChosen=button;if(button)button.classList.add('is-chosen');
+        $('profiles').classList.toggle('is-busy',!!button);$('profiles').setAttribute('aria-busy',String(!!button));busySpinner();
     }
     function loadPreferences(status) {
         var nextKey=status.preferenceKey?'netia-prefs:'+status.preferenceKey:null;
@@ -220,6 +273,9 @@
         function steps(state,e,page){
             var delta=e.deltaY*(e.deltaMode===1?40:e.deltaMode===2?page:1),magnitude=Math.abs(delta),direction=delta>0?1:-1,now=Date.now(),fresh,count;
             if(!delta)return 0;
+            // A reversal within 150 ms of the last event is the wheel settling back after a spin, not the viewer turning it:
+            // taking it as a step moved the list back by a row at the end of a scroll.
+            if(state.direction&&direction!==state.direction&&now-(state.at||0)<150)return 0;
             state.notch=Math.max(40,Math.min(120,state.notch||120,magnitude));
             fresh=direction!==state.direction||now-(state.at||0)>idle;if(fresh){state.direction=direction;state.total=0;}
             state.at=now;state.total+=magnitude;count=Math.floor(state.total/state.notch+1e-6);state.total-=count*state.notch;
@@ -246,7 +302,8 @@
         function target(el){return el.netiosMotion?el.netiosMotion.to:el.scrollTop;}
         function visualTop(el){var m=el.netiosMotion;return m&&m.layered?m.position:el.scrollTop;}
         function contentTop(el,node){return node.getBoundingClientRect().top-el.getBoundingClientRect().top+visualTop(el);}
-        function limit(el,top){return Math.max(0,Math.min(el.scrollHeight-el.clientHeight,Math.round(top)));}
+        function extent(el){var m=el.netiosMotion;return m&&m.max!==undefined?m.max:Math.max(0,el.scrollHeight-el.clientHeight);}
+        function limit(el,top){return Math.max(0,Math.min(extent(el),Math.round(top)));}
         function offsetChildren(el,value){var transform=value?'translate3d(0,'+value+'px,0)':'';for(var child=el.firstElementChild;child;child=child.nextElementSibling)if(child.style.transform!==transform)child.style.transform=transform;}
         function follow(el){indicators.forEach(function(item){if(item.scroller===el)placeThumb(item);});}
         function to(el,top,animate){
@@ -254,7 +311,7 @@
             if(!smooth||animate===false){if(motion){cancelAnimationFrame(motion.frame);settle(el);}if(el.scrollTop!==top)el.scrollTop=top;return;}
             if(motion){motion.to=top;return;}
             if(el.scrollTop===top)return;
-            motion=el.netiosMotion={to:top,exact:el.scrollTop,position:el.scrollTop,anchor:el.scrollTop,layered:layeredLists.indexOf(el)>=0,last:performance.now(),frame:0};moving.push(el);
+            motion=el.netiosMotion={max:extent(el),to:top,exact:el.scrollTop,position:el.scrollTop,anchor:el.scrollTop,layered:layeredLists.indexOf(el)>=0,last:performance.now(),frame:0};moving.push(el);
             motion.frame=requestAnimationFrame(function step(time){
                 var m=el.netiosMotion;if(m!==motion)return;
                 var dt=Math.max(1,Math.min(34,time-m.last)),remaining=m.to-m.exact,move=remaining*(1-Math.exp(-dt/lag)),cap=maxSpeed*dt;m.last=time;
@@ -264,7 +321,7 @@
                 if(m.exact!==m.to)m.frame=requestAnimationFrame(step);else{if(m.layered)el.scrollTop=m.to;settle(el);}
             });
         }
-        function settle(el){var m=el.netiosMotion;el.netiosMotion=null;if(m&&m.layered)offsetChildren(el,0);var index=moving.indexOf(el);if(index>=0)moving.splice(index,1);}
+        function settle(el){var m=el.netiosMotion;el.netiosMotion=null;if(m&&m.layered)offsetChildren(el,0);var index=moving.indexOf(el);if(index>=0)moving.splice(index,1);schedule(true);}
         // Content inserted above the viewport moves the whole motion with it, so prepending never jolts an animation.
         function shift(el,delta){var m=el.netiosMotion;if(m){m.to+=delta;m.exact+=delta;m.position+=delta;m.anchor+=delta;}el.scrollTop+=delta;}
         // Nearest-edge reveal against the destination, not the in-flight position.
@@ -292,7 +349,7 @@
         // list the selection walks row by row instead of jumping to the last row and back.
         function wheelRows(list,rowsList,count,heading,pad,from){
             if(!rowsList.length)return null;
-            var offset=base(list,rowsList[0].nodes[0]),before=target(list),height=list.clientHeight,max=Math.max(0,list.scrollHeight-height),direction=count>0?1:-1;
+            var offset=base(list,rowsList[0].nodes[0]),before=target(list),height=list.clientHeight,max=extent(list),direction=count>0?1:-1;
             function aim(row){var head=row.nodes[0].previousElementSibling;return (head&&head.classList.contains(heading)?head.offsetTop:row.top)-offset-pad;}
             var index=direction>0?rowsList.findIndex(function(row){return aim(row)>before+1;}):rowsList.map(function(row){return aim(row)<before-1;}).lastIndexOf(true);
             var row=index<0?null:rowsList[Math.max(0,Math.min(rowsList.length-1,index+count-direction))],top=row?Math.max(0,Math.min(max,aim(row))):direction>0?max:0;
@@ -300,6 +357,11 @@
             function visible(i){var r=rowsList[i],t=r.top-offset;return t>=top-1&&t+r.nodes[0].offsetHeight<=top+height+1;}
             var at=from?rowsList.findIndex(function(item){return item.nodes.indexOf(from)>=0;}):-1,column=at<0?0:rowsList[at].nodes.indexOf(from);
             var wanted=at<0?(row?rowsList.indexOf(row):0):Math.max(0,Math.min(rowsList.length-1,at+count));
+            // The row the selection moves to is brought fully into view (never against the wheel), so the selection moves one
+            // row per notch also where group headings make the rows uneven.
+            if(at>=0){var goal=rowsList[wanted],targetTop=goal.top-offset,targetBottom=targetTop+goal.nodes[0].offsetHeight;
+                if(direction<0&&targetBottom>top+height)top=Math.min(before,Math.max(0,targetBottom-height+pad));
+                else if(direction>0&&targetTop<top)top=Math.max(before,Math.min(max,targetTop-pad));}
             if(!visible(wanted)){var first=-1,last=-1;for(var i=0;i<rowsList.length;i++)if(visible(i)){if(first<0)first=i;last=i;}if(first>=0)wanted=wanted<first?first:last;}
             var chosen=rowsList[wanted];return {node:chosen.nodes[Math.min(column,chosen.nodes.length-1)],top:top};
         }
@@ -323,7 +385,10 @@
             if(offset!==item.offset){item.offset=offset;item.thumb.style.transform='translateY('+offset+'px)';}
         }
         function draw(item){
-            var s=item.scroller,host=s.offsetParent,height=s.clientHeight,extent=s.scrollHeight-height;
+            var s=item.scroller,host=s.offsetParent,height=s.clientHeight;
+            // Measured only at rest: mid-motion the translated children would change scrollHeight and the thumb's length.
+            if(s.netiosMotion&&item.geometry){placeThumb(item);return;}
+            var extent=s.scrollHeight-height;
             if(!host||height<=0||extent<=1){if(!item.track.hidden)item.track.hidden=true;item.key='';item.geometry=null;return;}
             var box=s.getBoundingClientRect();
             // The track sits in the page margin, so climb past ancestors that would clip it there.
@@ -361,8 +426,12 @@
         if(perf.on){perf.frames=0;perf.since=performance.now();$('perf-overlay').textContent=T('perf.value',{fps:'…',cpu:'…',ram:'…',app:'…'});perf.frame=requestAnimationFrame(perfFrame);perf.timer=setInterval(perfSample,1000);rpc('performance').catch(function(){});}
     }
     perfState();$('perf-toggle').onclick=function(){perf.on=!perf.on;perfState();try{localStorage.setItem('netios-perf-overlay',String(perf.on));}catch(error){notice(new Error('PREFERENCES_SAVE'));}};
-    // Options > Auto-play episodes (also in the player's settings for series and shows): 10 s countdown, then the next one.
-    var autoNext=false,playlist=null,nextUp={cancelled:false,fired:-1};try{autoNext=localStorage.getItem('netios-auto-next')==='true';}catch(error){}
+    // Options > Auto-play episodes (also in the player's settings for series and shows): 10, 30, 45 or 75 s before the end
+    // of the episode the next one is offered with a 5 s countdown, then it starts.
+    var autoNext=false,autoNextSeconds=10,playlist=null,nextUp={cancelled:false,fired:-1};try{autoNext=localStorage.getItem('netios-auto-next')==='true';var storedNext=Number(localStorage.getItem('netios-auto-next-seconds'));if([10,30,45,75].indexOf(storedNext)>=0)autoNextSeconds=storedNext;}catch(error){}
+    function setAutoNextSeconds(value){if([10,30,45,75].indexOf(value)<0)return;autoNextSeconds=value;$('autonext-seconds').value=String(value);$('autonext-seconds').mdiUpdate();try{localStorage.setItem('netios-auto-next-seconds',String(value));}catch(error){notice(new Error('PREFERENCES_SAVE'));}}
+    Array.prototype.forEach.call($('autonext-seconds').options,function(option){option.textContent=T('options.seconds',{seconds:option.value});});
+    $('autonext-seconds').value=String(autoNextSeconds);$('autonext-seconds').mdiUpdate();$('autonext-seconds').onchange=function(){setAutoNextSeconds(Number(this.value));};
     function autoNextState(){$('autonext-toggle').setAttribute('aria-pressed',String(autoNext));setIcon($('autonext-toggle'),'playlist-play',T('options.autonext')+' · '+T(autoNext?'options.on':'options.off'));}
     function setAutoNext(value){autoNext=value;autoNextState();if(!autoNext)hideNextUp();try{localStorage.setItem('netios-auto-next',String(autoNext));}catch(error){notice(new Error('PREFERENCES_SAVE'));}}
     autoNextState();$('autonext-toggle').onclick=function(){setAutoNext(!autoNext);};
@@ -382,14 +451,14 @@
         libraryCache=Object.create(null);libraryScope=null;artworkQueue=[];libraryGeneration++;
         loginStage(T("text.pobieranie_kanalow_i_sprawdzanie_uprawnien_pakietu"));
         return rpc('status').then(function (status) {
-            loadPreferences(status);var scope=preferenceKey,key='channels:'+scope;
-            if(refresh)['series','shows'].forEach(function(kind){NetiosData.remove('library:'+scope+':'+kind);});
+            progressStep('profile',2);loadPreferences(status);var scope=preferenceKey,key='channels:'+scope;
+            if(refresh)['series','shows'].forEach(function(kind){NetiosData.remove('library-v4:'+scope+':'+kind);});
             return (refresh||!scope?Promise.resolve(null):NetiosData.get(key)).then(function(saved){
                 var cached=TVModel.savedList(saved,Infinity,Date.now());
                 var fresh=rpc('channels').then(function(items){if(scope)NetiosData.set(key,{items:items});return items;});
-                if(!cached)return fresh.then(function(items){channelItems=items;return rpc('status');}).then(function(current){return showChannels(current);});
+                if(!cached)return fresh.then(function(items){progressStep('profile',3);channelItems=items;return rpc('status');}).then(function(current){return showChannels(current);});
                 // Configuration renames mutate channelItems, so compare Netia's answer with the list as it was saved.
-                var cachedText=JSON.stringify(cached);fresh.catch(function(){});channelItems=cached;
+                var cachedText=JSON.stringify(cached);fresh.catch(function(){});channelItems=cached;progressStep('profile',3);
                 return showChannels(status).then(function(){
                     fresh.then(function(items){
                         if(scope!==preferenceKey||JSON.stringify(items)===cachedText)return;
@@ -472,14 +541,14 @@
     }
     function openModal(id) {
         returnFocus = document.activeElement; modal = id; $('modal-backdrop').hidden = false;Scrolling.releasePointer();
-        $('channel-menu').hidden = id !== 'channel-menu'; $('player-settings').hidden = id !== 'player-settings'; $('diagnostics-dialog').hidden = id !== 'diagnostics-dialog';$('pin-dialog').hidden = id !== 'pin-dialog';
+        $('channel-menu').hidden = id !== 'channel-menu'; $('player-settings').hidden = id !== 'player-settings'; $('diagnostics-dialog').hidden = id !== 'diagnostics-dialog';$('pin-dialog').hidden = id !== 'pin-dialog';$('filter-dialog').hidden = id !== 'filter-dialog';
         // Focus the first option, not the header's close button; dialogs without options focus their close button.
         var first = $(id).querySelector(':scope>button:not([disabled]):not([hidden])') || $(id).querySelector('button:not([disabled])'); if (first) first.focus(); reveal();
     }
     function closeModal(restore) {
         if(modal==='diagnostics-dialog'&&restore!==false){openChannelMenu();focusControl($('menu-diagnostics'));return;}
         if (!modal) return; var cancelled=modal==='pin-dialog'&&pinState;if(cancelled)pinState=null;
-        modal = null; $('modal-backdrop').hidden = true; $('channel-menu').hidden = true; $('player-settings').hidden = true; $('diagnostics-dialog').hidden=true;$('pin-dialog').hidden=true;
+        modal = null; $('modal-backdrop').hidden = true; $('channel-menu').hidden = true; $('player-settings').hidden = true; $('diagnostics-dialog').hidden=true;$('pin-dialog').hidden=true;$('filter-dialog').hidden=true;
         if(cancelled)cancelled.resolve(false);
         if (restore !== false) { if (returnFocus && returnFocus.isConnected && returnFocus.offsetWidth) focusControl(returnFocus); else if (screen === 'channels') focusChannel(); }
         reveal();
@@ -527,11 +596,10 @@
     $('menu-diagnostics').onclick=openDiagnostics;$('close-options').onclick=function(){closeModal();};$('close-diagnostics').onclick=function(){closeModal();};
     setInterval(function(){if(modal==='diagnostics-dialog')$('diagnostics-clock').textContent=diagnosticTime(netiaNow());},1000);
     function openChannelMenu() {
-        var globalOnly=screen==='profiles',c = globalOnly?null:channel(focusedChannel); $('channel-menu-title').textContent = c ? c.title : T("text.opcje_2");
-        ['menu-favorite','menu-hide','menu-restore','menu-pin','refresh-button'].forEach(function(id){$(id).hidden=globalOnly;});
-        $('menu-favorite').disabled = $('menu-hide').disabled = !c;
-        $('menu-favorite').removeAttribute('data-current-icon');setIcon($('menu-favorite'),'heart',c && prefs.favorites.indexOf(c.id)>=0?T('channels.favoriteRemove'):T('channels.favoriteAdd'));
-        $('menu-hide').removeAttribute('data-current-icon');setIcon($('menu-hide'),'ghost',c && prefs.hidden.indexOf(c.id)>=0?T('text.pokaz_kanal'):T('text.ukryj_kanal'));
+        var globalOnly=screen==='profiles',c = globalOnly?null:channel(focusedChannel); $('channel-menu-title').textContent = T("text.opcje_2");
+        ['menu-hide','menu-restore','menu-pin','refresh-button'].forEach(function(id){$(id).hidden=globalOnly;});
+        $('menu-hide').disabled = !c;
+        $('menu-hide').removeAttribute('data-current-icon');setIcon($('menu-hide'),'ghost',!c?T('text.ukryj_kanal'):T(prefs.hidden.indexOf(c.id)>=0?'options.showNamed':'options.hideNamed',{name:c.title}));
         $('menu-pin').removeAttribute('data-current-icon');setIcon($('menu-pin'),'lock',T(prefs.hiddenPin?'pin.menuChange':'pin.menuSet'));openModal('channel-menu');
     }
     // The Hidden folder can be locked with a 4-digit PIN (Options). The profile's preferences keep only a hash of it. The
@@ -575,12 +643,31 @@
     $('pin-remove').onclick=function(){prefs.hiddenPin=null;savePreferences();finishPin();};
     $('menu-pin').onclick=function(){askPin(prefs.hiddenPin?'change':'set');};
     function stop() {
-        samplePlayback();
+        saveProgress(true);samplePlayback();
         generation++; playerDay = ''; playerPrograms = []; clearTimeout(hideTimer); closeModal(false); playerConnecting=false; busySpinner();
         var old = player; player = null;
         return Promise.resolve(old && old.destroy()).catch(function () {}).then(function () { $('video').pause(); $('video').removeAttribute('src'); $('video').load(); return rpc('stop').catch(function () {}); });
     }
-    function backToChannels() { var destination=playerReturn;return stop().then(function () { selectedVod=null;show(destination);if(destination==='library'){fitLibraryBackdrop();observeLibraryImages();var saved=libraryCache[libraryKey()],target=saved&&saved.nodes[saved.focus];if(!target||target.hidden)target=$('library-grid').querySelector('.library-card:not([hidden])');if(target)focusControl(target);if(saved)scrollLibrary(saved.scroll,false);if(libraryNext!==null)loadLibrary(true);}else{focusChannel();refreshPrograms();} }); }
+    // Episodes remember where viewing stopped, separately for every profile: position and length in seconds, the 400
+    // most recent titles. A nearly finished episode counts as watched; a start resumes from the saved place.
+    var progressSavedAt=0;
+    function progressKey(){return preferenceKey?'netios-progress:'+preferenceKey:null;}
+    function progressStore(){try{var value=JSON.parse(localStorage.getItem(progressKey()));return value&&typeof value==='object'?value:{};}catch(error){return {};}}
+    function episodeProgress(id){var entry=progressKey()?progressStore()[id]:null;return entry&&Number.isFinite(entry.p)&&Number.isFinite(entry.d)&&entry.d>0?entry:null;}
+    function saveProgress(force){
+        var video=$('video'),key=progressKey();if(!selectedVod||!key||playerConnecting||!Number.isFinite(video.duration)||video.duration<60||!(video.currentTime>0))return;
+        var now=Date.now();if(!force&&now-progressSavedAt<10000)return;progressSavedAt=now;
+        var all=progressStore(),done=video.duration-video.currentTime<Math.max(30,video.duration*0.03);delete all[selectedVod.id];
+        all[selectedVod.id]={p:done?Math.floor(video.duration):Math.floor(video.currentTime),d:Math.floor(video.duration),t:now};
+        var ids=Object.keys(all);if(ids.length>400)ids.sort(function(a,b){return all[a].t-all[b].t;}).slice(0,ids.length-400).forEach(function(id){delete all[id];});
+        try{localStorage.setItem(key,JSON.stringify(all));}catch(error){}
+    }
+    function paintProgress(node,item){
+        var bar=node.querySelector('.library-progress');if(!bar)return;var entry=item&&!item.category?episodeProgress(item.id):null;
+        bar.hidden=!entry;if(entry)bar.firstChild.style.width=Math.max(2,Math.min(100,entry.p/entry.d*100))+'%';
+    }
+    $('video').addEventListener('timeupdate',function(){saveProgress(false);});
+    function backToChannels() { var destination=playerReturn;return stop().then(function () { selectedVod=null;show(destination);if(destination==='library'){libraryNodes.forEach(function(node,i){paintProgress(node,libraryItems[i]);});fitLibraryBackdrop();observeLibraryImages();var saved=libraryCache[libraryKey()],target=saved&&saved.nodes[saved.focus];if(!target||target.hidden)target=$('library-grid').querySelector('.library-card:not([hidden])');if(target)focusControl(target);if(saved)scrollLibrary(saved.scroll,false);if(libraryNext!==null)loadLibrary(true);}else{focusChannel();refreshPrograms();} }); }
     function clearChannelNumber(){clearTimeout(numberTimer);channelDigits='';$('channel-number-entry').hidden=true;}
     function tuneChannel(id){
         var target=channelNodes[id];
@@ -630,19 +717,19 @@
     function play(id, start, vod, end) {
         var current;
         return stop().then(function () {
-            current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie").replace(/\u2026$/,''); playerConnecting=true; busySpinner();
+            current = generation; selectedVod=vod||null;hideNextUp();nextUp.cancelled=false;nextUp.at=null;show('player');$('player-guide').hidden=$('live-button').hidden=$('live-badge').parentNode.hidden=!!vod; $('player-title').textContent = (vod||channel(id)).title; $('player-channel').textContent = ''; $('player-message').textContent = T("text.laczenie").replace(/\u2026$/,''); playerConnecting=true; busySpinner();
             $('player-controls').classList.toggle('vod',!!vod);$('vod-time').hidden=!vod;$('vod-time').textContent=T('player.vodTime',{position:TVModel.playbackTime(0),duration:T('player.unknownTime')});
             if (!navigator.requestMediaKeySystemAccess) throw new Error('WIDEVINE_REQUIRED');
             // The CDM can stop answering (e.g. while the app is in the background); a start must not wait for it forever.
             return Promise.race([navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]), new Promise(function (resolve, reject) { setTimeout(reject, 10000); })]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
-        }).then(function () { if (current !== generation) throw new Error('STALE_REQUEST'); return rpc('play', {id: id, kind:vod?'vod':'tv',widevine: true, userAgent: navigator.userAgent}); }).then(function (data) {
+        }).then(function () { if (current !== generation) throw new Error('STALE_REQUEST'); progressStep('player',1); return rpc('play', {id: id, kind:vod?'vod':'tv',widevine: true, userAgent: navigator.userAgent}); }).then(function (data) {progressStep('player',2);
             if (current !== generation) throw new Error('STALE_REQUEST');
             shaka.polyfill.installAll(); if (!shaka.Player.isBrowserSupported()) throw new Error('UNSUPPORTED_STREAM'); licenseError = '';
             player = new shaka.Player($('video'));
             player.getNetworkingEngine().registerRequestFilter(function (type, request) { request.uris = request.uris.map(function (uri) { return uri.replace(/^http:\/\//, 'https://'); }); });
             shaka.net.NetworkingEngine.registerScheme('netia-license', function (uri, request) {
                 var bytes = new Uint8Array(request.body), text = ''; for (var i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]); var aborted = false;
-                var result = rpc('license', {challenge: btoa(text)}).catch(function (error) { licenseError = /^[A-Z_0-9-]+$/.test(error.message) ? error.message : 'LICENSE_ERROR'; throw error; }).then(function (encoded) {
+                var result = rpc('license', {challenge: btoa(text)}).catch(function (error) { licenseError = /^[A-Z_0-9-]+$/.test(error.message) ? error.message : 'LICENSE_ERROR'; throw error; }).then(function (encoded) {progressStep('player',3);
                     if (aborted || current !== generation) throw new Error('STALE_REQUEST');
                     var binary = atob(encoded.replace(/-/g, '+').replace(/_/g, '/')), answer = new Uint8Array(binary.length);
                     for (var j = 0; j < binary.length; j++) answer[j] = binary.charCodeAt(j);
@@ -654,7 +741,8 @@
             player.configure(playbackConfig);
             player.addEventListener('error', function (event) { if (current === generation) { $('player-message').textContent='';notice(new Error('PLAYER_'+event.detail.code+(licenseError?'_'+licenseError:'')));reveal(); } });
             return player.load(data.url,undefined,data.mimeType||'application/dash+xml').then(function () {
-                if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE'); chooseQuality('highest'); $('player-message').textContent = ''; playerConnecting=false; busySpinner(); playerDay = ''; tick(); reveal(); return startVideo(current);
+                if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE');
+                if(vod){var resume=episodeProgress(vod.id);if(resume&&resume.p>=30&&resume.d-resume.p>=60)$('video').currentTime=resume.p;} chooseQuality('highest'); $('player-message').textContent = ''; playerConnecting=false; busySpinner(); playerDay = ''; tick(); reveal(); return startVideo(current);
             });
         }).catch(function (error) { if (current !== generation) return; return backToChannels().then(function () { throw typeof error.code==='number'?new Error('PLAYER_'+error.code+(licenseError?'_'+licenseError:'')):error; }); });
     }
@@ -681,16 +769,19 @@
     function hideNextUp(){var card=$('next-up');if(card.hidden)return;card.hidden=true;if(card.contains(document.activeElement))$('pause-button').focus();}
     function updateNextUp(video){
         var next=autoNext?neighbour(1):null,remaining=video.duration-video.currentTime;
-        if(Number.isFinite(remaining)&&remaining>15)nextUp.cancelled=false;
-        if(!next||nextUp.cancelled||!Number.isFinite(remaining)||video.duration<30||remaining>10){hideNextUp();return;}
-        if(remaining<=0.5){if(nextUp.fired!==generation){nextUp.fired=generation;playEpisode(next);}return;}
-        var card=$('next-up');$('next-up-count').textContent=T('player.nextIn',{seconds:Math.ceil(remaining)});
+        if(Number.isFinite(remaining)&&remaining>autoNextSeconds+5)nextUp.cancelled=false;
+        if(!next||nextUp.cancelled||!Number.isFinite(remaining)||video.duration<autoNextSeconds+20||remaining>autoNextSeconds){nextUp.at=null;hideNextUp();return;}
+        // The card counts 5 s of the episode from the moment it appeared (a pause holds it), then the next episode starts.
+        if(nextUp.at===null||nextUp.at===undefined||video.currentTime<nextUp.at)nextUp.at=video.currentTime;
+        var left=5-(video.currentTime-nextUp.at);
+        if(left<=0||remaining<=0.5){if(nextUp.fired!==generation){nextUp.fired=generation;playEpisode(next);}return;}
+        var card=$('next-up');$('next-up-count').textContent=T('player.nextIn',{seconds:Math.ceil(left)});
         if(card.hidden){
             var image=$('next-up-image'),src=next.image||libraryDetails&&libraryDetails.image;image.hidden=!src;if(src)setImage(image,src);
             $('next-up-title').textContent=episodeCaption(next);card.hidden=false;reveal();focusControl($('next-up-play'));
         }
     }
-    $('video').addEventListener('ended',function(){if(screen==='player'&&selectedVod&&autoNext&&!nextUp.cancelled&&nextUp.fired!==generation){var next=neighbour(1);if(next){nextUp.fired=generation;playEpisode(next);}}});
+    $('video').addEventListener('ended',function(){saveProgress(true);if(screen==='player'&&selectedVod&&autoNext&&!nextUp.cancelled&&nextUp.fired!==generation){var next=neighbour(1);if(next){nextUp.fired=generation;playEpisode(next);}}});
     $('next-up-play').onclick=function(){var next=neighbour(1);if(next){nextUp.fired=generation;playEpisode(next);}};
     // Cancel (and Back while the card is up) ends watching: back to the episode list.
     $('next-up-cancel').onclick=function(){nextUp.cancelled=true;backToChannels().catch(notice);};
@@ -753,7 +844,8 @@
         var selectedAudio=audioTracks.find(function(audio){return audio.active;});
         audioTracks.forEach(function(audio){
             var label=(audio.label||'').replace(/\b(?:main|alternate)\b/gi,'').replace(/^[\s·–—-]+|[\s·–—-]+$/g,'');
-            if(!label)label=audio.language==='pl'?T('audio.polish'):audio.language||T('text.domyslna');
+            if(/^und$/i.test(label))label='';
+            if(!label)label=audio.language==='pl'?T('audio.polish'):!audio.language||/^und$/i.test(audio.language)?T('audio.original'):audio.language;
             if(!/audiodeskrypcj/i.test(label)&&((audio.roles||[]).indexOf('description')>=0||audio.accessibilityPurpose==='visually impaired'))label+=' · '+T('audio.description');
             option('audio-list',label,function(){var current=generation;player.selectAudioTrack(audio);setTimeout(function(){if(current!==generation||!player)return;chooseQuality(qualityMode);if(modal==='player-settings')settings();},150);},audio===selectedAudio);
         });
@@ -763,8 +855,8 @@
         if (!texts.length) { var empty = document.createElement('p'); empty.textContent = T("text.kanal_nie_udostepnia_napisow"); $('subtitle-list').appendChild(empty); }
         [50, 75, 100, 150, 200].forEach(function (size) { option('subtitle-sizes', size + '%', function () { prefs.subtitleSize = size; subtitleSize(); savePreferences(); settings(); }, prefs.subtitleSize === size); });
         // Auto-play only applies to series and shows, i.e. an episode started from such a list.
-        $('autonext-heading').hidden=!(selectedVod&&playlist);
-        if(selectedVod&&playlist){option('autonext-list',T('options.on'),function(){setAutoNext(true);settings();},autoNext);option('autonext-list',T('options.off'),function(){setAutoNext(false);settings();},!autoNext);}
+        $('autonext-row').hidden=!(selectedVod&&playlist);
+        if(selectedVod&&playlist){option('autonext-list',T('options.off'),function(){setAutoNext(false);settings();},!autoNext);[10,30,45,75].forEach(function(seconds){option('autonext-list',T('options.seconds',{seconds:seconds}),function(){setAutoNextSeconds(seconds);setAutoNext(true);settings();},autoNext&&autoNextSeconds===seconds);});}
         if (modal !== 'player-settings') openModal('player-settings');
         else if (focusList && $(focusList)) { var target = Array.prototype.find.call($(focusList).querySelectorAll('button'), function (b) { return b.textContent === focusLabel; }); if (target) target.focus(); }
     }
@@ -825,7 +917,7 @@
         clock.className = 'guide-time';body.className='guide-body'; clock.textContent = time(p.start) + ' – ' + time(p.end); title.textContent = p.title; description.textContent = p.description;
         var status=document.createElement('span'),remaining=document.createElement('span'),live=document.createElement('span');
         status.className='guide-live-status';status.hidden=true;status.setAttribute('role','progressbar');status.setAttribute('aria-valuemin','0');status.setAttribute('aria-valuemax','100');
-        remaining.className='guide-remaining';live.className='guide-live-badge';live.textContent=T('text.na_zywo_2');status.appendChild(remaining);status.appendChild(live);
+        remaining.className='guide-remaining';live.className='guide-live-badge';setIcon(live,'record',T('text.na_zywo'));status.appendChild(remaining);status.appendChild(live);
         var heading=document.createElement('span');heading.className='guide-heading';heading.appendChild(title);heading.appendChild(status);
         body.appendChild(heading); body.appendChild(description); button.appendChild(clock); button.appendChild(body);
         // Keep visited descriptions open so losing focus cannot shrink rows above the viewport.
@@ -894,7 +986,7 @@
         var fragment = document.createDocumentFragment(); items.forEach(function(p){fragment.appendChild(guideButton(p));}); $('guide-items').appendChild(fragment);markGuideDays();updateGuideProgress(); queueGuideScroll();
     }
     function back() {
-        if (modal) closeModal(); else if (!$('guide').hidden) closeGuide(); else if (screen === 'player') backToChannels().catch(notice); else if(screen==='library') libraryBack(); else if (screen === 'web-login') cancelLogin(); else if (screen === 'save') show(saveReturn); else if (screen === 'channels') run(profiles); else if (screen === 'profiles') $('logout-button').focus(); else if (typeof window.close === 'function') window.close();
+        if (modal) closeModal(); else if (!$('guide').hidden) closeGuide(); else if (screen === 'player') backToChannels().catch(notice); else if(screen==='library') libraryBack(); else if (screen === 'web-login') cancelLogin(); else if (screen === 'save') show(saveReturn); else if (screen === 'channels') run(profiles); else if (screen === 'profiles') { if(!cancelDefaultChoice())$('logout-button').focus(); } else if (typeof window.close === 'function') window.close();
     }
     var libraryImageFrame=0,libraryError=false;
     function updateLibraryImageStatus(){
@@ -922,18 +1014,19 @@
     function libraryKey(){return libraryKind+':'+(libraryId===undefined?'root':libraryId);}
     function rememberLibrary(){
         if(libraryScope!==preferenceKey||!libraryItems.length&&libraryNext!==null)return;
-        libraryCache[libraryKey()]={items:libraryItems,nodes:libraryNodes,next:libraryNext,search:$('library-search').value,scroll:Scrolling.target($('library-results')),focus:libraryNodes.indexOf(document.activeElement),sort:libraryMode(),details:libraryDetails};
+        libraryCache[libraryKey()]={items:libraryItems,nodes:libraryNodes,next:libraryNext,search:$('library-search').value,scroll:Scrolling.target($('library-results')),focus:libraryNodes.indexOf(document.activeElement&&document.activeElement.netiosOriginal||document.activeElement),sort:libraryMode(),details:libraryDetails};
     }
     function openLibrary(kind){if(screen==='library')rememberLibrary();libraryGeneration++;libraryKind=kind;libraryId=undefined;libraryTrail=[];show('library');loadLibrary(false);}
     function artwork(){
         if(artworkActive>=2||!artworkQueue.length)return;
         var job=artworkQueue.shift();if(job.scope!==preferenceKey||job.key!==libraryKey()||!job.image.isConnected){job.item.artworkRequested=false;job.image.dataset.imagePending='false';job.resolve();artwork();return;}artworkActive++;
         rpc('catalogArtwork',{kind:job.kind,id:job.item.id}).then(function(src){
-            if(job.scope!==preferenceKey){job.image.dataset.imagePending='false';return;}if(src){job.item.image=src;job.image.dataset.src=src;if(job.key===libraryKey())saveLibrary(true);if(job.key===libraryKey()&&job.image.isConnected){job.image.hidden=false;return setImage(job.image,src);}}job.image.dataset.imagePending='false';
+            if(job.scope!==preferenceKey){job.image.dataset.imagePending='false';return;}if(src){job.item.image=src;job.image.dataset.src=src;if(job.key===libraryKey())saveLibrary(true);Array.prototype.forEach.call($('library-grid').querySelectorAll('img'),function(other){if(other!==job.image&&other.netiaItem===job.item){other.dataset.src=src;other.hidden=false;setImage(other,src);}});if(job.key===libraryKey()&&job.image.isConnected){job.image.hidden=false;return setImage(job.image,src);}}job.image.dataset.imagePending='false';
         }).catch(function(){job.item.artworkRequested=false;job.image.dataset.imagePending='false';}).then(function(){artworkActive--;job.resolve();updateLibraryImageStatus();artwork();});artwork();
     }
     function loadLibraryImage(image){
         image.dataset.imageQueued='false';
+        if(!image.dataset.src&&image.netiaItem&&image.netiaItem.image){image.dataset.src=image.netiaItem.image;image.hidden=false;}
         if(image.dataset.src)return setImage(image,image.dataset.src);
         if(image.netiaItem&&!image.netiaItem.artworkRequested){image.netiaItem.artworkRequested=true;image.dataset.imagePending='true';image.netiosArtwork=new Promise(function(resolve){artworkQueue.push({image:image,item:image.netiaItem,kind:image.netiaKind,scope:image.netiaScope,key:libraryKey(),resolve:resolve});});artwork();}
         return image.netiosArtwork||Promise.resolve();
@@ -982,20 +1075,29 @@
     },{passive:false});
     function filterLibrary(){
         Scrolling.update();
-        var list=$('library-results'),grid=$('library-grid'),focus=document.activeElement,scroll=Scrolling.target(list),mode=libraryMode(),changedSort=grid.dataset.sort!==mode,matches=TVModel.search(libraryItems,$('library-search').value),matching=new Set(matches),nodes=new Map(),minHeight=grid.style.minHeight;
+        var list=$('library-results'),grid=$('library-grid'),focus=document.activeElement,scroll=Scrolling.target(list),mode=libraryMode(),changedSort=grid.dataset.sort!==mode,matches=TVModel.search(libraryItems,$('library-search').value).filter(tagPasses),matching=new Set(matches),nodes=new Map(),minHeight=grid.style.minHeight;
         // Keep the scroll extent while moving reused cards into the fragment.
         grid.style.minHeight=grid.offsetHeight+'px';
-        var grouped=mode==='genres'||mode==='seasons',groups=TVModel.catalogueGroups(matches,mode),fragment=document.createDocumentFragment();
-        libraryNodes.forEach(function(node,i){nodes.set(libraryItems[i],node);node.hidden=!matching.has(libraryItems[i]);});
+        var grouped=mode==='genres'||mode==='seasons',tags=chosenTags(),groups=TVModel.catalogueGroups(matches,mode).filter(function(group){return mode!=='genres'||!tags.length||tags.indexOf(group.key)>=0;}),fragment=document.createDocumentFragment();
+        libraryNodes.forEach(function(node,i){nodes.set(libraryItems[i],node);node.hidden=!matching.has(libraryItems[i]);paintProgress(node,libraryItems[i]);});
+        var placed=new Set();
         groups.forEach(function(group){
             if(grouped){var heading=document.createElement('h2');heading.className='channel-category library-group';heading.textContent=mode==='seasons'?(group.key?T('library.season',{number:group.key}):T('library.episodes')):group.key||T('common.other');fragment.appendChild(heading);}
-            group.items.forEach(function(item){fragment.appendChild(nodes.get(item));});
+            group.items.forEach(function(item){var node=nodes.get(item);fragment.appendChild(placed.has(node)?libraryCardCopy(node):node);placed.add(node);});
         });
         grid.textContent='';grid.appendChild(fragment);grid.style.minHeight=minHeight;grid.dataset.sort=mode;
+        if(focus&&focus.netiosOriginal)focus=focus.netiosOriginal;
         if(libraryNodes.indexOf(focus)>=0){var target=!focus.hidden?focus:grid.querySelector('.library-card:not([hidden])');if(target)focusControl(target);}
         if(!Scrolling.moving(list))Scrolling.to(list,scroll,false);
         if(changedSort&&target)alignLibrary(target);
         observeLibraryImages();
+    }
+    // A title listed under several genres appears once per genre; copies open the same item and share its artwork.
+    function libraryCardCopy(node){
+        var copy=node.cloneNode(true),from=node.querySelector('img'),to=copy.querySelector('img');
+        copy.netiosOriginal=node;copy.onclick=node.onclick;copy.removeAttribute('data-image-queued');
+        ['netiaItem','netiaKind','netiaScope'].forEach(function(key){if(from[key]!==undefined)to[key]=from[key];});
+        to.onerror=function(){to.hidden=true;};delete to.dataset.imagePending;return copy;
     }
     function renderLibraryHero(){
         setIcon($('library-back'),libraryId===undefined?'home':'chevron-left');
@@ -1051,9 +1153,45 @@
     }
     window.addEventListener('resize',function(){fitLibraryBackdrop();fitLibraryDescription();});
     if(document.fonts)document.fonts.ready.then(fitLibraryDescription);
+    // Series and shows are listed in categories named by the tags of Netia's Filtruj (its Gatunki list); Filtruj narrows the
+    // list to the chosen categories. Inside a title the episodes keep their own sort (alphabetical or by season).
     function libraryMode(){return libraryId===undefined?prefs.librarySort[libraryKind]:libraryEpisodeSort;}
+    var libraryTags=Object.create(null);
+    function libraryTagKey(){return preferenceKey+':'+libraryKind;}
+    function chosenTags(){return libraryId===undefined?libraryTags[libraryTagKey()]||[]:[];}
+    // Without chosen tags every title is listed, those without a Filtruj tag last under Pozostałe. Pozostałe is also the last
+    // switch of Filtruj (the empty tag), so the untagged titles can be chosen like any category.
+    function tagPasses(item){if(libraryId!==undefined)return true;var tags=chosenTags(),genres=item.genres||[];return !tags.length||(genres.length?genres.some(function(genre){return tags.indexOf(genre)>=0;}):tags.indexOf('')>=0);}
+    var libraryTagNames=Object.create(null);
+    function loadLibraryTags(){
+        var key=libraryTagKey();if(libraryTagNames[key])return Promise.resolve(libraryTagNames[key]);
+        return rpc('catalogTags',{kind:libraryKind}).then(function(data){if(!data||!Array.isArray(data.tags))throw new Error('SERVICE_ERROR');libraryTagNames[key]=data.tags.filter(function(tag){return typeof tag==='string'&&tag;});return libraryTagNames[key];});
+    }
+    function libraryFilterState(){
+        var root=libraryId===undefined,button=$('library-filter'),count=chosenTags().length;
+        button.hidden=!root;
+        button.setAttribute('aria-pressed',String(count>0));button.removeAttribute('data-current-icon');setIcon(button,'filter',count?T('library.filterCount',{count:count}):T('library.filter'));
+    }
+    function renderLibraryTags(){
+        var root=$('filter-tags'),tags=chosenTags(),names=(libraryTagNames[libraryTagKey()]||TVModel.catalogueGroups(libraryItems,'genres').map(function(group){return group.key;}).filter(Boolean)).concat(['']);root.textContent='';
+        names.forEach(function(name){
+            var button=document.createElement('button'),label=document.createElement('span'),toggle=document.createElement('span');
+            button.className='filter-switch';button.setAttribute('aria-pressed',String(tags.indexOf(name)>=0));label.textContent=name||T('common.other');toggle.className='switch';button.appendChild(label);button.appendChild(toggle);
+            button.onclick=function(){
+                var list=chosenTags().slice(),index=list.indexOf(name);if(index>=0)list.splice(index,1);else list.push(name);
+                libraryTags[libraryTagKey()]=list;button.setAttribute('aria-pressed',String(index<0));libraryFilterState();filterLibrary();
+            };
+            root.appendChild(button);
+        });
+    }
+    $('library-filter').onclick=function(){
+        openModal('filter-dialog');renderLibraryTags();focusControl($('filter-tags').querySelector('button')||$('close-filter'));
+        loadLibraryTags().then(function(){if(modal!=='filter-dialog')return;var focused=document.activeElement&&document.activeElement.textContent;renderLibraryTags();var again=Array.prototype.filter.call($('filter-tags').querySelectorAll('button'),function(b){return b.textContent===focused;})[0];focusControl(again||$('filter-tags').querySelector('button')||$('close-filter'));},function(error){notice(error);});
+    };
+    $('close-filter').onclick=function(){closeModal();};
+    $('filter-clear').onclick=function(){libraryTags[libraryTagKey()]=[];libraryFilterState();filterLibrary();renderLibraryTags();focusControl($('filter-tags').querySelector('button')||$('close-filter'));};
     function configureLibrarySort(){
-        var select=$('library-sort'),inner=libraryId!==undefined,key=inner?'seasons':'genres';
+        var select=$('library-sort'),inner=libraryId!==undefined,key=inner?'seasons':'genres';libraryFilterState();
         if(!select.querySelector('option[value="'+key+'"]')){
             select.textContent='';[['alphabetical','sort.alphabetical'],[key,inner?'sort.seasons':'sort.genres']].forEach(function(pair){var option=document.createElement('option');option.value=pair[0];option.textContent=T(pair[1]);select.appendChild(option);});
         }
@@ -1071,7 +1209,7 @@
     // A completed list is saved at once; artwork found later is batched (later=true) into one rewrite.
     function saveLibrary(later){
         if(libraryId!==undefined||!preferenceKey||libraryNext!==null)return;
-        var key='library:'+preferenceKey+':'+libraryKind,items=libraryItems;clearTimeout(librarySaveTimer);
+        var key='library-v4:'+preferenceKey+':'+libraryKind,items=libraryItems;clearTimeout(librarySaveTimer);
         function save(){NetiosData.set(key,{items:items.map(function(item){var copy=Object.assign({},item);delete copy.artworkRequested;return copy;})});}
         if(later)librarySaveTimer=setTimeout(save,2000);else save();
     }
@@ -1094,7 +1232,7 @@
             libraryItems=[];libraryNodes=[];libraryNext=0;$('library-search').value='';scrollLibrary(0,false);configureLibrarySort();
         }
         filterLibrary();
-        var saveKey=libraryId===undefined&&preferenceKey?'library:'+preferenceKey+':'+libraryKind:null;
+        var saveKey=libraryId===undefined&&preferenceKey?'library-v4:'+preferenceKey+':'+libraryKind:null;
         if(saveKey&&refresh)NetiosData.remove(saveKey);
         var request=libraryId!==undefined?loadLibraryDetails(refresh).then(function(details){return {items:details.items,next:null};}):saveKey&&!offset&&!refresh?NetiosData.get(saveKey).then(function(saved){
             var items=TVModel.savedList(saved,libraryMaxAge,Date.now());
@@ -1112,7 +1250,9 @@
                 button.className='library-card';button.title=captionText;frame.className='library-thumbnail';image.alt='';image.dataset.imageWidth='640';
                 var parentImage=!item.category&&libraryDetails&&libraryDetails.image,src=item.image||parentImage;
                 if(src)image.dataset.src=src;else if(item.category){image.netiaItem=item;image.netiaKind=libraryKind;image.netiaScope=preferenceKey;}
-                image.hidden=!src;image.onerror=function(){if(parentImage&&image.dataset.src!==parentImage){image.dataset.src=parentImage;setImage(image,parentImage);}else image.hidden=true;};var caption=document.createElement('span');caption.textContent=captionText;title.appendChild(caption);frame.appendChild(image);button.appendChild(frame);button.appendChild(title);
+                image.hidden=!src;image.onerror=function(){if(parentImage&&image.dataset.src!==parentImage){image.dataset.src=parentImage;setImage(image,parentImage);}else image.hidden=true;};var caption=document.createElement('span');caption.textContent=captionText;title.appendChild(caption);frame.appendChild(image);
+                if(!item.category){var watched=document.createElement('span');watched.className='library-progress';watched.appendChild(document.createElement('i'));frame.appendChild(watched);paintProgress(button,item);}
+                button.appendChild(frame);button.appendChild(title);
                 button.onclick=function(){
                     rememberLibrary();if(item.category){libraryTrail.push({id:libraryId,title:item.title,item:item});libraryId=item.id;focusControl($('library-back'));loadLibrary(false);}
                     else{libraryGeneration++;libraryLoading=false;playerReturn='library';playlist=libraryId===undefined?null:libraryItems.slice();playEpisode(item);}
@@ -1144,6 +1284,8 @@
         }).catch(function (error) { if (attempt !== pendingLogin) return; clearLogin(); show('login'); throw error; });
     }
     function cancelLogin() { clearLogin(); show('login'); }
+    // A password Netia rejected is not sent again by the next start, however many starts follow, until a sign-in succeeds.
+    function passwordRejected(value){try{if(value===undefined)return localStorage.getItem('netios-login-rejected')==='true';if(value)localStorage.setItem('netios-login-rejected','true');else localStorage.removeItem('netios-login-rejected');}catch(error){}return false;}
     // manual: a rejected automated attempt is not repeated automatically; the form is filled and the user submits it.
     function officialLogin(retry, injected, fresh, manual) {
         clearLogin(); var attempt = {},phase='frame'; pendingLogin = attempt; show('web-login');loginStage(T("text.odczyt_zaszyfrowanego_konta_i_zapisanej_sesji"));
@@ -1158,16 +1300,19 @@
             if (attempt !== pendingLogin) return;
             if(!injected&&retry!==false)$('frame-remember').checked=!!(saved&&saved.remember);
             if(imported)return imported;
+            if(legacyEngine){phase='import';throw new Error('IMPORT_REQUIRED');}
             // With a remembered password the official form works behind the splash and is shown only if it needs the user.
-            var unveil=function(){if(attempt===pendingLogin)$('splash').hidden=true;};if(!(saved&&saved.password)||manual)unveil();
-            return NetiaFrameLogin.open(saved, loginStage, true, manual, unveil);
+            var rejected=passwordRejected(),hold=manual||rejected,unveil=function(reason){if(reason==='rejected')passwordRejected(true);if(attempt===pendingLogin)$('splash').hidden=true;};if(!(saved&&saved.password)||hold)unveil();
+            return NetiaFrameLogin.open(rejected&&saved?{username:saved.username,remember:saved.remember}:saved, loginStage, true, hold, unveil);
         }).then(function (session) {
             if (!session || attempt !== pendingLogin) return;
             var data = Object.assign({}, session, session.credentials || {}, {remember:$('frame-remember').checked}); delete data.credentials;
-            phase='verify';loginStage(T("text.weryfikacja_sesji_i_bezpieczne_zapisywanie_konta"));return rpc('acceptFrameSession', data).then(function () { if (attempt !== pendingLogin) return; phase='profiles';return profiles().then(function(){if(attempt===pendingLogin)clearLogin();}); });
+            phase='verify';loginStage(T("text.weryfikacja_sesji_i_bezpieczne_zapisywanie_konta"));return rpc('acceptFrameSession', data).then(function () { passwordRejected(false);if (attempt !== pendingLogin) return; phase='profiles';return profiles().then(function(){if(attempt===pendingLogin)clearLogin();}); });
         }).catch(function (error) {
             if (attempt !== pendingLogin) return;
             // Netia rejected the imported session: forget it and show the login screen (the frame is not an option here).
+            // A session this TV saved itself falls back to the official form; a computer's import is needed where the form cannot run.
+            if (imported && imported.saved && phase==='verify' && !/^(NETWORK|BUSY|STALE_REQUEST|TIMEOUT)$/.test(error.message)) return rpc('discardImportedSession').catch(function(){}).then(function(){if(attempt===pendingLogin)return officialLogin(undefined,injected,true,manual);});
             if (imported && phase==='verify') { clearLogin(); show('login'); return (/^(NETWORK|BUSY|STALE_REQUEST)$/.test(error.message)?Promise.resolve():rpc('discardImportedSession').catch(function(){})).then(function(){ throw error; }); }
             if (retry !== false && phase!=='profiles' && (/^(INVALID_SESSION|RPC_13404|LOGIN_REQUIRED)$/.test(error.message)||phase==='verify'&&error.message==='RPC_13572')) return NetiaFrameLogin.forget().then(function () { if(attempt===pendingLogin)return officialLogin(false,injected,false,error.message==='RPC_13572'); },function(cleanupError){if(attempt!==pendingLogin)return;clearLogin();show('login');throw cleanupError;});
             if (retry !== false && phase==='frame' && error.message === 'RPC_13572') return officialLogin(false,injected,false,true);
@@ -1192,7 +1337,6 @@
     ['all', 'favorites', 'hidden'].forEach(function (mode) { function apply(){channelMode=mode;prefs.sort=prefs.channelSort[mode];$('channel-sort').value=prefs.sort;$('channel-sort').mdiUpdate();renderChannels();} $('filter-' + mode).onclick = function () { if(mode!=='hidden'){hiddenUnlocked=false;apply();}else withHiddenUnlocked(apply); }; });
     $('channel-options').onclick = openChannelMenu; $('menu-close').onclick = function () { stop().then(function(){window.close();}).catch(notice); };
     $('menu-profiles').onclick=function(){closeModal(false);run(function(){return stop().then(function(){return profiles(true);});});};
-    $('menu-favorite').onclick = function () { togglePreference('favorites'); closeModal(); };
     $('menu-hide').onclick = function () { togglePreference('hidden'); closeModal(); };
     $('menu-restore').onclick = function () { withHiddenUnlocked(function () { prefs.hidden = []; savePreferences(); renderChannels(); closeModal(); }); };
     $('refresh-button').onclick = function () { closeModal(false); run(function () { return channels('refresh'); }); };
@@ -1248,6 +1392,7 @@
     document.addEventListener('keydown',function(e){
         // The splash can cover a remembered sign-in; only Back (cancel) reaches the controls hidden under it.
         if(!$('splash').hidden&&[461,27].indexOf(e.keyCode)<0){e.preventDefault();e.stopImmediatePropagation();return;}
+        if(profileChosen&&screen==='profiles'){e.preventDefault();e.stopImmediatePropagation();return;}
         scrollCancelledClick=false;Scrolling.releasePointer();if(channelHeroFrame){cancelAnimationFrame(channelHeroFrame);channelHeroFrame=0;if(screen==='channels'&&!modal)hero();}
         if(pointerChannel&&screen==='channels'&&!modal&&$('guide').hidden&&[13,37,38,39,40].indexOf(e.keyCode)>=0){pointerFocusing=true;try{pointerChannel.focus({preventScroll:true});}finally{pointerFocusing=false;}}
         pointerChannel=null;
@@ -1272,6 +1417,9 @@
         // In dialogs the pointer moves focus, so hover and remote focus never highlight two options at once.
         var control=modal&&e.target.closest&&e.target.closest('#'+modal+' button:not(:disabled),#'+modal+' select');
         if(control&&control!==document.activeElement)control.focus({preventScroll:true});
+        // On the profile screen the pointer moves focus too, so one profile is highlighted and the box follows it.
+        var profile=screen==='profiles'&&!profileChosen&&e.target.closest&&e.target.closest('#profile-list button');
+        if(profile&&profile!==document.activeElement){profile.focus({preventScroll:true});return;}
         var card=e.target.closest&&e.target.closest('.channel-card,.library-card,.guide-item');
         if(!card||modal){pointerChannel=null;return;}
         if(card.dataset.channel){pointerChannel=card;if(focusedChannel!==card.dataset.channel){focusedChannel=card.dataset.channel;markChannel();queueChannelHero();}return;}
@@ -1299,11 +1447,19 @@
     });
     document.addEventListener('focusin',function(e){if(channelOK&&!channelOK.held&&channelOK.target!==e.target)cancelChannelOK();});
     window.addEventListener('blur',cancelChannelOK);
+    // The ring of an option row moves onto its time choice while that has focus (Chromium 53 has no :has()).
+    function rowChoiceFocus(){Array.prototype.forEach.call(document.querySelectorAll('.oled-setting'),function(row){var select=row.querySelector('select');row.classList.toggle('choice-focus',!!select&&document.activeElement===select);});}
+    document.addEventListener('focusin',rowChoiceFocus);document.addEventListener('focusout',function(){setTimeout(rowChoiceFocus,0);});
     function editSearch(input){if(input.readOnly){input.blur();input.readOnly=false;input.focus();}}
     document.querySelectorAll('input[type="search"]').forEach(function(input){input.readOnly=true;input.addEventListener('blur',function(){input.readOnly=true;});input.addEventListener('click',function(){editSearch(input);});});
     document.addEventListener('keydown', function (e) {
         var active=document.activeElement,search=active.matches('input[type="search"]');
         if(search&&(e.keyCode===13||e.key==='Enter')){e.preventDefault();editSearch(active);return;}
+        // OK on the remote is Enter, which the browser does not use for a checkbox; it toggles it here as Space would.
+        if(active.type==='checkbox'&&(e.keyCode===13||e.key==='Enter')){e.preventDefault();if(!e.repeat){active.checked=!active.checked;active.dispatchEvent(new Event('change',{bubbles:true}));}return;}
+        // Down from any profile reaches the box (it sits left of centre, so the nearest control below can be another); Up returns to that profile.
+        if(screen==='profiles'&&!modal&&e.keyCode===40&&active.closest('#profile-list')){e.preventDefault();$('remember-profile').focus();return;}
+        if(screen==='profiles'&&!modal&&e.keyCode===38&&active.id==='remember-profile'&&lastProfile&&lastProfile.parentNode){e.preventDefault();lastProfile.focus();return;}
         if(search&&(e.keyCode===461||e.key==='Escape')){e.preventDefault();active.readOnly=true;focusControl($(active.id==='library-search'?'library-back':'guide-next'));return;}
         if(modal==='pin-dialog'){
             var pinKey=e.keyCode>=48&&e.keyCode<=57?e.keyCode-48:e.keyCode>=96&&e.keyCode<=105?e.keyCode-96:null;
@@ -1330,9 +1486,11 @@
         }
         if ([37, 38, 39, 40].indexOf(e.keyCode) < 0) return;
         if(active.tagName==='SELECT'){
-            if(active.id!=='channel-sort'&&active.id!=='library-sort')return;
+            // A time choice beside an option row (OLED Saver, auto-play) is a stop like any button: the arrows leave it, OK opens its list.
+            var rowChoice=!!active.closest('.oled-setting');
+            if(!rowChoice&&active.id!=='channel-sort'&&active.id!=='library-sort')return;
             e.preventDefault();
-            if(e.keyCode===38||e.keyCode===40){var index=Math.max(0,Math.min(active.options.length-1,active.selectedIndex+(e.keyCode===38?-1:1)));if(index!==active.selectedIndex){active.selectedIndex=index;active.dispatchEvent(new Event('change',{bubbles:true}));}return;}
+            if(!rowChoice&&(e.keyCode===38||e.keyCode===40)){var index=Math.max(0,Math.min(active.options.length-1,active.selectedIndex+(e.keyCode===38?-1:1)));if(index!==active.selectedIndex){active.selectedIndex=index;active.dispatchEvent(new Event('change',{bubbles:true}));}return;}
         }
         // The LG keyboard delivers every typed letter as a keydown; only leaving the field (Up/Down) ends editing, otherwise
         // the field would turn read-only and the keyboard would close after the first letter.
@@ -1356,7 +1514,8 @@
         var root = modal ? $(modal) : !$('guide').hidden ? $('guide') : screen === 'player' ? $('player-controls') : $('shell');
         var controls = Array.prototype.filter.call(root.querySelectorAll(screen === 'web-login' ? 'button,input,iframe' : 'button,input,select'), function (n) { return !n.disabled && n.offsetWidth > 0 && getComputedStyle(n).visibility !== 'hidden'; });
         var from = document.activeElement.getBoundingClientRect(), x = from.left + from.width / 2, y = from.top + from.height / 2, best, score = Infinity;
-        controls.forEach(function (n) { if (n === document.activeElement) return; var r = n.getBoundingClientRect(), dx = r.left + r.width / 2 - x, dy = r.top + r.height / 2 - y, primary = e.keyCode === 37 ? -dx : e.keyCode === 39 ? dx : e.keyCode === 38 ? -dy : dy, perpendicular = e.keyCode === 37 || e.keyCode === 39 ? Math.abs(dy) : Math.abs(dx); if (primary > 8 && primary + perpendicular * 3 < score) { best = n; score = primary + perpendicular * 3; } });
+        // Left/Right skip a control that spans the current one's whole width in another row: it lies above or below, not beside.
+        controls.forEach(function (n) { if (n === document.activeElement) return; var r = n.getBoundingClientRect(), dx = r.left + r.width / 2 - x, dy = r.top + r.height / 2 - y, primary = e.keyCode === 37 ? -dx : e.keyCode === 39 ? dx : e.keyCode === 38 ? -dy : dy, perpendicular = e.keyCode === 37 || e.keyCode === 39 ? (r.bottom > from.top && r.top < from.bottom ? 0 : Math.abs(dy)) : (r.right > from.left && r.left < from.right ? 0 : Math.abs(dx)); if ((e.keyCode === 37 || e.keyCode === 39) && perpendicular && r.left <= from.left + 1 && r.right >= from.right - 1) return; if (primary > 8 && primary + perpendicular * 3 < score) { best = n; score = primary + perpendicular * 3; } });
         if (best) { e.preventDefault(); focusControl(best); if(!best.classList.contains('library-card')&&!best.dataset.channel) best.scrollIntoView({block: 'nearest'}); }
     });
     document.addEventListener('visibilitychange', function () {

@@ -191,8 +191,10 @@ if ($Ipk) {
     $setup = [Text.Encoding]::UTF8.GetBytes(([Text.Encoding]::UTF8.GetString($setup)).Replace("`r`n", "`n"))
     $payload = [byte[]]($setup + [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Ipk).Path))
     # The TV has no listening netcat, so Node receives tv-setup.sh + the IPK on port 5599 while this PC pushes them;
-    # the bootstrap travels base64-encoded so no quoting survives the SSH/telnet command line.
-    $boot = "W=/tmp/netios-install; mkdir -p `$W; node -e 'var n=+process.argv[2],f=require(""fs"").createWriteStream(process.argv[1]),g=0;require(""net"").createServer(function(c){c.on(""data"",function(d){f.write(d);g+=d.length;if(g>=n)f.end(function(){process.exit(0)})})}).listen(5599);setTimeout(function(){process.exit(1)},300000)' `$W/p $($payload.Length) || exit 1; dd if=`$W/p of=`$W/s.sh bs=1 count=$($setup.Length) 2>/dev/null; tail -c +$($setup.Length + 1) `$W/p > `$W/n.ipk; rm `$W/p; sh `$W/s.sh --local `$W/n.ipk"
+    # the bootstrap travels base64-encoded so no quoting survives the SSH/telnet command line. Its SHA-256 travels in the
+    # same (SSH/telnet) command, and the TV runs nothing it received unless the hash matches.
+    $hash = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($payload)) -replace '-', '').ToLower()
+    $boot = "W=/tmp/netios-install; mkdir -p `$W; node -e 'var n=+process.argv[2],h=process.argv[3],f=require(""fs"").createWriteStream(process.argv[1]),x=require(""crypto"").createHash(""sha256""),g=0;require(""net"").createServer(function(c){c.on(""data"",function(d){if(g+d.length>n){c.destroy();return}f.write(d);x.update(d);g+=d.length;if(g>=n)f.end(function(){process.exit(x.digest(""hex"")===h?0:2)})})}).listen(5599);setTimeout(function(){process.exit(1)},300000)' `$W/p $($payload.Length) $hash || { echo 'netiOS: paczka dotarla uszkodzona lub podmieniona (SHA-256), przerywam.'; rm -rf `$W; exit 1; }; dd if=`$W/p of=`$W/s.sh bs=1 count=$($setup.Length) 2>/dev/null; tail -c +$($setup.Length + 1) `$W/p > `$W/n.ipk; rm `$W/p; sh `$W/s.sh --local `$W/n.ipk"
     $remote = "echo $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($boot.Replace("`r", '')))) | base64 -d | sh"
     Write-Host "Instaluję lokalną paczkę $(Split-Path -Leaf $Ipk)."
     $push = Start-Job -ArgumentList $Tv, $payload -ScriptBlock { param($tv, $data)

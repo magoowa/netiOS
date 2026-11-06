@@ -2366,13 +2366,14 @@ header nav button+button {
 }
 
 .guide-item { position: relative; overflow: hidden; }
-.guide-item.current::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--guide-progress,0%); background: #087582; pointer-events: none; }
+/* The elapsed part of the programme stays inside the item's border and focus ring (3 px) and follows its corners. */
+.guide-item.current::before { content: ""; position: absolute; left: 3px; top: 3px; bottom: 3px; right: 3px; border-radius: 7px; background: linear-gradient(to right, #087582 var(--guide-progress,0%), transparent var(--guide-progress,0%)); pointer-events: none; }
 .guide-item>span { position: relative; z-index: 1; }
 .guide-heading { display: flex; align-items: baseline; margin-bottom: 6px; }
 .guide-heading>strong { flex: 1; min-width: 0; margin: 0 16px 0 0; }
 .guide-live-status { display: inline-flex; align-items: center; flex-shrink: 0; padding: 0; font-size: 21px; color: #fff; white-space: nowrap; }
 .guide-remaining { margin-right: 16px; }
-.guide-live-badge { padding: 3px 10px; }
+.guide-live-badge { padding: 6px 16px; border-radius: 50px; }
 
 #vod-time {
   position: absolute;
@@ -2488,7 +2489,7 @@ html { overflow: hidden; }
 .next-up-actions { grid-column: 1 / -1; display: flex; }
 .next-up-actions button + button { margin-left: 16px; }
 .next-up-actions button { font-size: 24px; padding: 10px 22px; }
-#autonext-heading[hidden] { display: none; }
+#autonext-row[hidden] { display: none; }
 
 /* Profile avatars cycle through four colours. */
 .avatar-0 { background-color: #725fa7; }
@@ -2549,7 +2550,9 @@ html { overflow: hidden; }
 .legacy .settings-columns > div:nth-child(2) { flex: 0 0 auto; min-width: 320px; }
 /* OLED Saver: one row under the columns, all choices side by side. */
 .settings-oled { display: flex; align-items: center; margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.08); }
-.settings-oled h3 { margin: 0 24px 0 0; font-size: 22px; white-space: nowrap; }
+.settings-oled h3 { flex: 0 0 300px; margin: 0 24px 0 0; font-size: 22px; white-space: nowrap; }
+/* Auto-play sits right under OLED Saver, in the same layout. */
+.settings-oled+.settings-oled { margin-top: 12px; padding-top: 12px; }
 .settings-oled button { display: inline-block; width: auto; margin: 0 8px 0 0; padding: 9px 18px; border: 0; border-radius: 7px; font-size: 21px; }
 
 /* First programme load: progress in the channel header's top-right corner. */
@@ -2571,3 +2574,145 @@ html { overflow: hidden; }
 #pin-keypad .pin-spacer { visibility: hidden; }
 #pin-message { min-height: 30px; margin: 14px 0 0; color: #ffb4a8; }
 #pin-dialog>#pin-remove { text-align: center; margin-top: 12px; }
+
+/* The official form fills the screen under one compact row. Zoom on the iframe would size only its box and zoom inside the
+   page would stretch its 100vh layout off-centre, so the frame keeps a normal viewport (882 / 1.4 px) and is scaled whole;
+   its margin stands in for the height the scale adds. */
+.web-login.form-ready { justify-content: flex-start; padding: 12px 40px; }
+.web-login.form-ready .web-login-toolbar { flex-direction: row; height: 60px; min-height: 60px; padding: 0; }
+.web-login.form-ready #web-login-status, .web-login.form-ready .web-login-toolbar .app-version { display: none; }
+.web-login.form-ready #login-stage { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 24px; text-align: left; }
+.web-login.form-ready .web-login-toolbar button { flex-shrink: 0; margin: 0 0 0 24px; }
+.web-login.form-ready iframe { zoom: normal; width: 71.429%; height: calc(71.429vh - 141px); margin-bottom: calc(28.571vh - 57px); transform: scale(1.4); transform-origin: top center; }
+.web-login.form-ready .frame-remember { margin-top: 8px; }
+
+/* Rows with a choice beside them (OLED Saver, auto-play) light up whole, like every other option. */
+#channel-menu .oled-setting { position: relative; }
+#channel-menu .oled-setting:focus-within { background: #12343a; }
+/* The focus ring is drawn over the row's content, never under the label or the time choice. */
+#channel-menu .oled-setting:focus-within::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 12px; box-shadow: inset 0 0 0 3px #00b7c7; pointer-events: none; z-index: 2; }
+#channel-menu .oled-setting>#oled-toggle:focus, #channel-menu .oled-setting>#autonext-toggle:focus { background: transparent; box-shadow: none; }
+#channel-menu #autonext-toggle { margin-left: -20px; }
+/* How much of an episode was watched. */
+.library-thumbnail { position: relative; }
+.library-progress { position: absolute; left: 12px; right: 12px; bottom: 10px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.65); overflow: hidden; }
+.library-progress[hidden] { display: none; }
+.library-progress>i { display: block; height: 100%; width: 0; border-radius: 3px; background: #00b7c7; }
+
+/* The time choice of a row (OLED Saver, auto-play) sits clear of the row's focus ring. */
+#channel-menu .oled-setting>.mdi-select { height: 40px; margin-right: 8px; }
+#channel-menu .oled-setting>.mdi-select>select { height: 40px; padding-top: 0; padding-bottom: 0; }
+/* Both time choices lay out alike: the value from the left, the icon at the right edge. */
+.oled-setting>.mdi-select>.mdi-select-content { justify-content: flex-start; padding: 0 20px 0 22px; box-sizing: border-box; }
+.oled-setting>.mdi-select>.mdi-select-content>.mdi-content { display: flex; align-items: center; width: 100%; }
+.oled-setting>.mdi-select>.mdi-select-content .icon-label { flex: 1 1 auto; text-align: left; }
+
+/* Both time choices lay out alike: the value from the left, the icon at the right edge. */
+.oled-setting>.mdi-select>.mdi-select-content { justify-content: flex-start; padding: 0 20px 0 22px; box-sizing: border-box; }
+.oled-setting>.mdi-select>.mdi-select-content>.mdi-content { display: flex; align-items: center; width: 100%; }
+.oled-setting>.mdi-select>.mdi-select-content .icon-label { flex: 1 1 auto; text-align: left; }
+/* The open list of a select: just below the field, as wide and as rounded as it. */
+.mdi-select-open { z-index: 40; }
+.mdi-select-menu { position: absolute; z-index: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 8px; background: #191b1f; border: 2px solid #55585c; border-top: 0; box-shadow: 0 14px 32px rgba(0,0,0,.6); }
+/* While its list is open the field stays on top of it, and the focused option carries the highlight, not the row. */
+.mdi-select-open>select { background-color: #191b1f; }
+#channel-menu .oled-setting.mdi-menu-open::after { display: none; }
+.mdi-select-menu .mdi-select-option { display: block; width: 100%; margin: 0; padding: 10px 12px; border: 0; background: transparent; color: #b9bec4; font: inherit; text-align: left; white-space: nowrap; }
+.mdi-select-menu .mdi-select-option[aria-selected=true] { color: #fff; }
+.mdi-select-menu .mdi-select-option:focus { background: #12343a; color: #fff; box-shadow: inset 0 0 0 3px #00b7c7; }
+/* Chromium 53 (webOS 4) has no :focus-within: there the focused label or time choice of such a row lights up itself. */
+.legacy #channel-menu .oled-setting>#oled-toggle:focus, .legacy #channel-menu .oled-setting>#autonext-toggle:focus { background: #12343a; box-shadow: inset 0 0 0 3px #00b7c7; }
+
+/* Filtruj: the button takes the sort's place on series and show lists; the dialog lists the tags as switches. */
+.library-header #library-filter { flex: 0 0 190px; width: 190px; height: 64px; margin: 0 12px; padding: 0 24px; display: flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 21px; }
+.library-header #library-filter[hidden], .library-header .sort-control[hidden] { display: none; }
+.library-header #library-filter[aria-pressed=true] { background: #00b7c7; color: #000; border-color: #00b7c7; }
+.library-header #library-filter[aria-pressed=true]:focus { background: #12343a; color: #fff; border-color: #00b7c7; }
+.filter-dialog { width: 640px; max-height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; }
+.filter-dialog .filter-heading { font-size: 26px; color: #fff; margin: 4px 0 8px 20px; }
+#filter-tags { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px; }
+#filter-tags .filter-switch { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 60px; margin: 0; padding: 0 20px; border: 0; border-radius: 12px; font-size: 24px; text-align: left; }
+#filter-tags .filter-switch[aria-pressed=true] { background: transparent; color: #fff; }
+#filter-tags .filter-switch:focus { background: #12343a; color: #fff; }
+#filter-tags .switch { position: relative; width: 60px; height: 30px; border-radius: 15px; background: #55585c; flex-shrink: 0; margin-left: 24px; }
+#filter-tags .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #c9cdd2; transition: left .15s ease-out; }
+#filter-tags .filter-switch[aria-pressed=true] .switch { background: #00b7c7; }
+#filter-tags .filter-switch[aria-pressed=true] .switch::after { left: 33px; background: #fff; }
+#filter-dialog #filter-clear { align-self: center; margin: 16px 0 0; }
+/* Filtruj uses the TV's width: a wide window with the tags in four columns, all visible without scrolling. */
+.filter-dialog { top: 50%; left: 50%; transform: translate(-50%,-50%); width: 1280px; max-width: calc(100% - 80px); max-height: calc(100% - 80px); padding: 28px 32px; }
+#filter-tags { display: flex; flex-wrap: wrap; align-content: flex-start; overflow-y: auto; margin: 0 -6px; padding: 0; }
+#filter-tags .filter-switch { width: calc(25% - 12px); height: 44px; margin: 2px 6px; padding: 0 16px; font-size: 22px; }
+#filter-dialog #filter-clear { margin-top: 12px; }
+/* Sort and Filtruj side by side leave the search field its room. */
+.library-header .library-sort-control { flex: 0 0 230px; width: 230px; }
+/* Search field: the title takes only the room its text needs (up to 520px) and gives way first, so the placeholder and the typed text fit. */
+.library-header h1 { flex: 0 1 auto; min-width: 0; }
+.library-header .library-search-control { position: relative; display: flex; align-items: center; flex: 1 1 360px; min-width: 360px; }
+.library-header #library-search { flex: 1 1 auto; width: 100%; min-width: 0; padding-left: 48px; }
+/* movie-search: the size of the row's button icons (21px text), its drawn outline centred on the capitals of the field text, the buttons' 8px gap before the text. */
+.library-search-icon { position: absolute; left: 24px; top: 50%; transform: translateY(calc(-50% - 3px)); font-size: 21px; line-height: 0; color: #fff; pointer-events: none; z-index: 1; }
+/* The time choice of an option row is reachable with the d-pad (Right from the label): while it has focus the row keeps
+   its highlight, and the ring is drawn round the time pill instead of the row, in front of it. */
+#channel-menu .oled-setting.choice-focus::after { display: none; }
+#channel-menu .oled-setting>.mdi-select::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 20px; box-shadow: inset 0 0 0 3px #00b7c7; pointer-events: none; z-index: 3; display: none; }
+#channel-menu .oled-setting.choice-focus>.mdi-select::after { display: block; }
+#channel-menu .oled-setting.choice-focus.mdi-menu-open>.mdi-select::after { display: none; }
+.legacy #channel-menu .oled-setting.choice-focus { background: #12343a; }
+/* The profile page address is only shown (and lights up under the pointer): opening it on the TV leads nowhere. */
+.profile-help #profile-manage-link { cursor: default; }
+/* Timeline layers: the bar at the bottom, the programme dividers on it, the slider with its knob on top, so nothing
+   crosses the knob. The slider's own track is transparent; the bar lights up when the slider is pointed at or focused. */
+#timeline-bar { position: absolute; left: 0; right: 0; top: 15px; height: 6px; border-radius: 3px; background: #00b7c7; z-index: 0; pointer-events: none; }
+#timeline-segments { z-index: 1; }
+#timeline-track #timeline { position: relative; z-index: 2; background: transparent; }
+#timeline-track #timeline::-webkit-slider-runnable-track, #timeline-track #timeline:hover::-webkit-slider-runnable-track, #timeline-track #timeline:focus::-webkit-slider-runnable-track { background: transparent; box-shadow: none; }
+#timeline-track #timeline::-webkit-slider-thumb { position: relative; z-index: 3; box-shadow: 0 0 0 2px rgba(0,0,0,.45); }
+#timeline:hover+#timeline-bar, #timeline:focus+#timeline-bar { background: #35e1ec; box-shadow: 0 0 10px rgba(0,183,199,.65); }
+/* Player settings on webOS 4: Chromium 53 sizes a shrink-to-fit window wrongly around flex rows, so the window came out
+   narrower than its columns (the last column cut off, OLED Saver wrapped). There the columns are a table and the OLED
+   Saver / auto-play rows are plain lines, both of which it measures right: the same widths as the grid on webOS 5. */
+.legacy .settings-columns { display: table; border-collapse: separate; border-spacing: 0; }
+.legacy .settings-columns > div, .legacy .settings-columns > div:first-child, .legacy .settings-columns > div:nth-child(2), .legacy .settings-columns > div:last-child { display: table-cell; vertical-align: top; margin: 0; padding: 0 36px 0 0; }
+.legacy .settings-columns > div:first-child { width: 276px; min-width: 276px; }
+.legacy .settings-columns > div:nth-child(2)::before { content: ""; display: block; width: 320px; height: 0; }
+.legacy .settings-columns > div:last-child { width: 220px; min-width: 220px; padding-right: 0; }
+.legacy .settings-oled { display: block; white-space: nowrap; }
+.legacy .settings-oled h3 { display: inline-block; vertical-align: middle; width: 300px; }
+.legacy .settings-oled > div { display: inline-block; vertical-align: middle; }
+
+/* Profile screen: the auto sign-in mark, one size for every helper text, even spacing above the QR code. */
+.profile-avatar { position: relative; }
+.profile-auto { position: absolute; right: 2px; bottom: 2px; display: flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 50%; background: #00b7c7; color: #0b1418; border: 4px solid #000; font-size: 40px; line-height: 0; box-sizing: border-box; }
+.profile-auto>.mdi-content { display: block; line-height: 0; }
+.profile-screen .hint, .profile-help p, .profile-help a { font-size: 20px; line-height: 1.4; }
+.profile-screen .hint { margin: 14px 0 18px; }
+.profile-help { gap: 6px; bottom: 44px; }
+.profile-help #profile-qr { margin-top: 16px; }
+/* A chosen profile keeps the screen locked while its channels load. */
+#profiles.is-busy { pointer-events: none; }
+#profiles.is-busy #profile-list button:not(.is-chosen), #profiles.is-busy .check, #profiles.is-busy .hint, #profiles.is-busy .profile-actions, #profiles.is-busy .profile-help { opacity: .35; }
+.profile-avatar .profile-auto svg.mdi { fill: currentColor; stroke: none; height: var(--mdi-cap-height,.7em); width: calc(var(--mdi-aspect) * var(--mdi-cap-height,.7em)); }
+@supports(height:1cap) { .profile-avatar .profile-auto svg.mdi { height: 1cap; width: calc(var(--mdi-aspect) * 1cap); } }
+/* Only the focused profile is highlighted; the pointer moves focus, hover alone never marks a second one. */
+#profile-list button:hover:not(:focus) { background: transparent; color: inherit; box-shadow: none; }
+.profile-auto { transition: opacity .15s ease, transform .15s ease; }
+.profile-auto.is-off { opacity: 0; transform: scale(.6); }
+
+/* Loading indicator with progress: a ring that fills with the load and the percentage in its centre. */
+#busy-spinner { border: 0; border-radius: 50%; animation: none; background: rgba(0,0,0,.55); width: 168px; height: 168px; margin: -84px 0 0 -84px; display: flex; align-items: center; justify-content: center; will-change: auto; }
+#busy-spinner[hidden] { display: none; }
+#busy-spinner svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+#busy-spinner circle { fill: none; stroke-width: 9; }
+#busy-spinner .busy-track { stroke: rgba(255,255,255,.18); }
+#busy-spinner .busy-arc { stroke: #00b7c7; stroke-linecap: round; stroke-dasharray: 0 264; transition: stroke-dasharray .18s ease-out; }
+#busy-spinner .busy-percent { position: relative; font-size: 34px; color: #fff; font-variant-numeric: tabular-nums; }
+
+/* Checkboxes in the interface's own style: a rounded box in line with its text, a clear gap before the words. */
+label.check { display: inline-flex; align-items: center; cursor: pointer; }
+input[type=checkbox] { -webkit-appearance: none; appearance: none; flex: none; width: 30px; height: 30px; margin: 0 16px 0 0; padding: 0; border: 3px solid #8a9099; border-radius: 8px; background: transparent center / 22px 22px no-repeat; vertical-align: middle; box-sizing: border-box; cursor: pointer; }
+input[type=checkbox]:checked { background-color: #00b7c7; border-color: #00b7c7; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%230b1418' d='M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z'/%3E%3C/svg%3E"); }
+input[type=checkbox]:focus { outline: none; box-shadow: 0 0 0 3px #000, 0 0 0 6px #00b7c7; }
+.profile-default-name { color: #00b7c7; }
+/* Option rows of the player settings never wrap: the button margins alone space them, without the width of the spaces between. */
+.settings-oled > div { white-space: nowrap; font-size: 0; }

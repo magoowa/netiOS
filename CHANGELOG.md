@@ -1,5 +1,63 @@
 # Historia zmian netiOS
 
+## 0.7.0
+
+### Seriale i Programy
+
+- Kategorie pochodzą z panelu Filtruj Netii (Gatunki): 22 dla seriali i 13 dla programów. Tytuł należący do kilku gatunków pojawia się w każdym z nich.
+- Przycisk **Filtruj** obok sortowania otwiera okno „Filtruj po gatunkach”: przełączniki w czterech kolumnach, widoczne bez przewijania. Przycisk pokazuje liczbę włączonych filtrów.
+- Tytuły bez gatunku trafiają do kategorii Pozostałe. Bez włączonych filtrów są widoczne zawsze; w oknie Filtruj Pozostałe jest ostatnim przełącznikiem.
+- Sortowanie: Alfabetycznie albo Kategorie.
+- **Postęp oglądania i wznawianie**: odcinek przerwany po co najmniej 30 s startuje od miejsca zatrzymania (o ile do końca zostaje ponad minuta). Kafle odcinków mają pasek postępu, widoczny od razu po wyjściu z odtwarzacza. Każdy profil ma własną pamięć.
+- Nazwy odcinków bez powtórzonego tytułu serialu także przy oznaczeniu sezonu, np. „Policjanci S2 - Odcinek 5” → „Odcinek 5”.
+- Pole wyszukiwania ma ikonę i miejsce na cały tekst.
+
+### Autoodtwarzanie
+
+- Wybór, kiedy pokazać następny odcinek: 10, 30, 45 lub 75 s przed końcem. Odliczanie do startu trwa zawsze 5 s.
+- Ustawienie w Opcjach i w ustawieniach odtwarzacza wygląda tak samo jak OLED Saver.
+
+### Opcje
+
+- Nagłówek „Opcje”; „Ukryj” i „Pokaż” podają nazwę zaznaczonego kanału. Usunięta pozycja „Dodaj do ulubionych” (żółty przycisk działa nadal).
+- Pełna obsługa pilotem: d-pad nie przeskakuje OLED Saver, a w prawo przechodzi na wybór czasu OLED Saver i autoodtwarzania (z własną ramką); OK otwiera listę.
+- Własne rozwijane listy: wspólny zaokrąglony obrys z polem, wartości w linii z tekstem pola, sterowanie strzałkami i OK. Działa też na webOS 4.
+
+### Odtwarzacz i Program TV
+
+- Ścieżka dźwiękowa bez języka („und”) nazywa się „Oryginalna”.
+- Pasek postępu audycji w Programie TV mieści się w ramce; zaokrąglony znacznik „na żywo”.
+- Kulka osi czasu jest zawsze na wierzchu: pasek i znaczniki audycji nie przechodzą przez nią.
+- W ustawieniach odtwarzacza OLED Saver i autoodtwarzanie mają wszystkie opcje w jednej linii.
+- webOS 4: okno ustawień odtwarzacza ma pełną szerokość i układ jak na webOS 5 (bez uciętych kolumn, OLED Saver w jednej linii).
+
+### Przewijanie
+
+- Suwak listy nie zmienia długości przy dojściu do końca listy.
+- Kółko Magic Remote nie odbija i nie zacina się: krótkie drgnięcie w przeciwną stronę (do 150 ms) jest pomijane, a każdy ruch przesuwa zaznaczenie o jeden rząd.
+
+### Logowanie
+
+- Formularz Netii jest większy i wyśrodkowany. „Przerwij” w formularzu nie psuje logowania: aplikacja wraca do formularza.
+- Odrzucone hasło: komunikat i ponowne wpisanie hasła (login zostaje). Aplikacja nie próbuje logować się w tle starym hasłem.
+- Sesja jest zapamiętywana w zaszyfrowanym magazynie konta (AES-256-GCM), więc telewizor nie musi logować się od nowa przy każdym uruchomieniu. Sesja przeniesiona z komputera (webOS 4) trafia do tego samego magazynu, a jawny plik jest usuwany.
+- Ekran profili „Kto ogląda?”. Przy polu widać „Domyślny profil: [nazwa]”, a profil domyślny ma ikonę autorenew na awatarze.
+- Profil domyślny ustawia się w dwóch krokach. Po zaznaczeniu pola ikona podąża za fokusem, a naciśnięcie profilu go zatwierdza. Dopiero następne naciśnięcie wybiera profil do oglądania. Wstecz anuluje ustawianie, a odznaczenie pola usuwa profil domyślny. Podpis pod polem podpowiada, co dalej („Wybierz swój profil.”).
+- Pola wyboru w całej aplikacji mają styl interfejsu: zaokrąglony kwadrat w linii z tekstem i odstęp od liter. OK na pilocie zaznacza i odznacza pole.
+- Pilot i wskaźnik: w dół z każdego profilu prowadzi do pola, w górę wraca do tego profilu. Wskaźnik Magic Remote przenosi fokus i podświetlony jest zawsze jeden profil.
+- Po wybraniu profilu ekran jest zablokowany do wczytania kanałów.
+- Wskaźnik ładowania w całej aplikacji pokazuje postęp: pierścień zapełnia się etapami ładowania, a w środku jest procent.
+- Przycisk „Wyloguj się z netiOS”. Teksty pomocnicze mają jedną wielkość. Pod przyciskiem są kolejno: opis, adres i kod QR z odstępem.
+- Domyślny profil jest pamiętany także na webOS 4, a pole „Domyślny profil” w Opcjach nie odznacza się samo.
+- Adres Netii do zmiany ustawień profilu jest tylko wyświetlany (podświetla się, nie otwiera pustej strony).
+- Na webOS 4 bez przeniesionej sesji aplikacja od razu wskazuje Import-Session zamiast formularza, którego ta przeglądarka nie uruchamia.
+
+### Instalator i bezpieczeństwo
+
+- Instalator sprawdza sumę SHA-256 paczki po przesłaniu na telewizor i przerywa przy niezgodności.
+- `tv-setup.sh` nie używa `eval`: manifest wydania sprawdza Node.js, a skrypt czyta tylko gotowe wartości.
+- Paczki nie zawierają lokalnych adresów IP ani danych konta.
+
 ## 0.6.4
 
 ### Pilot i lista kanałów

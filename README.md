@@ -12,8 +12,9 @@ Funkcja OLED Saver automatycznie włączy wygaszacz ekranu wszystkim używający
 2. **Profile** — wybór profilu, profil domyślny i automatyczny wybór jedynego profilu.
 3. **Kanały w pakiecie** — logotypy, ulubione, ukryte, sortowanie alfabetyczne, tematyczne lub z ulubionymi na początku; lista zapamiętana między uruchomieniami.
 4. **Odtwarzacz DASH/Widevine i MP4 VOD** — najwyższa dostępna jakość na start, wybór innych poziomów jakości, audio i napisów, cofanie w buforze Netii.
-5. **Program TV, Seriale i Programy** — ramówka z granicami dni, katalogi z sezonami i opisami, zapamiętane listy i miniatury.
-6. **Pilot i opcje** — Natywna obsługa Magic Remote, płynne przewijanie, numery kanałów, kolorowe skróty, diagnostyka, panel wydajności i OLED Saver.
+5. **Program TV, Seriale i Programy** — ramówka z granicami dni, katalogi z sezonami i opisami, kategorie i filtr gatunków z Netii, zapamiętane listy i miniatury.
+6. **Wznawianie odcinków** — pasek postępu na kaflach i start od miejsca przerwania, osobno dla każdego profilu; autoodtwarzanie następnego odcinka.
+7. **Pilot i opcje** — natywna obsługa Magic Remote i pełna nawigacja d-padem, płynne przewijanie, numery kanałów, kolorowe skróty, diagnostyka, panel wydajności i OLED Saver.
 
 ## Zrzuty ekranu
 
@@ -22,6 +23,8 @@ Zrzuty z telewizora LG (webOS 5). Logotypy, nazwy kanałów, opisy i grafiki nal
 ![Lista kanałów](docs/screenshots/channels.png)
 ![Program TV](docs/screenshots/guide.png)
 ![Seriale](docs/screenshots/series.png)
+![Filtruj po gatunkach](docs/screenshots/filter.png)
+![Wznawianie odcinków](docs/screenshots/resume.png)
 ![Opcje](docs/screenshots/options.png)
 
 ## Budowanie
@@ -39,7 +42,7 @@ npm run release
 
 Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
 
-Pakiet po buildzie: `dist/com.netiago.webos_0.6.4_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
+Pakiet po buildzie: `dist/com.netiago.webos_0.7.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
 
 Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
 
@@ -47,7 +50,7 @@ Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI
 
 **[Poradnik instalacji krok po kroku](docs/INSTALL.md)**: wymagania, instalacja i logowanie, ze zrzutami ekranu. Obejmuje webOS 4, gdzie logujesz się na komputerze, a narzędzie przenosi sesję na telewizor.
 
-W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.6.4-installer.zip` i uruchom:
+W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.7.0-installer.zip` i uruchom:
 
 - **`Install-netiOS.cmd`**: wyszukuje telewizory, instaluje dołączoną paczkę przez SSH lub telnet i czeka na potwierdzenie od systemu. Alternatywnie paczkę wgrasz przez [Glasshouse](https://github.com/rorygallagher2024/glasshouse).
 - **`Import-Session.cmd`** (webOS 4): otwiera stronę logowania Netia GO w przeglądarce na komputerze; po zalogowaniu przenosi sesję na telewizor.
@@ -61,11 +64,13 @@ Ręcznie: zainstaluj IPK przez Homebrew Channel lub zgodny instalator, np. webOS
 
 Krótki OK na kafelku włącza kanał po puszczeniu przycisku, bez dodatkowego oczekiwania. Kliknięcie wskaźnikiem działa od razu. Czerwony ogląda, zielony otwiera Program TV, żółty zmienia ulubione, niebieski otwiera Opcje. Numery są względne wobec aktualnej listy; wpisywanie kończy się po 1,5 s lub po OK.
 
-Logowanie odbywa się na TV. Opcja „Zapamiętaj dane logowania” zapisuje zweryfikowany login i hasło w AES-256-GCM. Wylogowanie usuwa zapisane hasło i uwierzytelnienie, pozostawiając zaszyfrowaną podpowiedź loginu/profilu. Zamknięcie lub utrata fokusu nie wylogowuje. Root TV może odczytać lokalny klucz: nie jest to sprzętowy magazyn kluczy. Szczegóły: [bezpieczeństwo](SECURITY.md).
+Logowanie odbywa się na TV. Opcja „Zapamiętaj dane logowania” zapisuje zweryfikowany login, hasło i sesję w AES-256-GCM. Wylogowanie usuwa zapisane hasło i uwierzytelnienie, pozostawiając zaszyfrowaną podpowiedź loginu/profilu. Zamknięcie lub utrata fokusu nie wylogowuje. Root TV może odczytać lokalny klucz: nie jest to sprzętowy magazyn kluczy. Szczegóły: [bezpieczeństwo](SECURITY.md).
 
 Sortowanie kanałów: Alfabetycznie (naturalna kolejność liczb w nazwach, np. 2 przed 10), Tematycznie oraz Najpierw ulubione. Każda lista (Wszystkie, Ulubione, Ukryte) pamięta własny wybór.
 
-OLED Saver ma niezależny przełącznik ON/OFF i czas 30/60/90/120 minut bezczynności podczas oglądania TV. Wygaszacz pauzuje obraz; dowolny przycisk przywraca oglądanie. W Opcjach można też włączyć płynne przewijanie list oraz panel wydajności (FPS, obciążenie procesora i pamięć RAM telewizora).
+OLED Saver ma niezależny przełącznik ON/OFF i czas 30/60/90/120 minut bezczynności podczas oglądania TV. Wygaszacz pauzuje obraz; dowolny przycisk przywraca oglądanie. Autoodtwarzanie pokazuje następny odcinek 10, 30, 45 lub 75 s przed końcem i włącza go po 5 s odliczania. W Opcjach można też włączyć płynne przewijanie list, a w Diagnostyce panel wydajności (FPS, obciążenie procesora i pamięć RAM telewizora).
+
+Seriale i Programy: sortowanie Alfabetycznie lub według kategorii z panelu Filtruj Netii; przycisk Filtruj zawęża listę do wybranych gatunków. Przerwany odcinek startuje od miejsca zatrzymania, a postęp jest zapamiętany osobno dla każdego profilu.
 
 ## Edycja i narzędzia
 

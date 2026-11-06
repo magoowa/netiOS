@@ -109,7 +109,7 @@ Provider.prototype.importSession = function (data) {
     if (data.user && ['string', 'number'].indexOf(typeof data.user.id) >= 0) this.auth.accountKey = crypto.createHash('sha256').update(String(data.user.id)).digest('hex');
     else if (typeof data.accountKey === 'string' && /^[a-f0-9]{64}$/.test(data.accountKey)) this.auth.accountKey = data.accountKey;
     else if (accountKey) this.auth.accountKey = accountKey;
-    this.channels = []; this.vodCategories=null;this.vodMedia=null;this.catalogScans=null;this.rootCatalogs=null;
+    this.channels = []; this.vodCategories=null;this.vodMedia=null;this.catalogScans=null;this.rootCatalogs=null;this.genreMaps=null;
     this.generation++;
 };
 Provider.prototype.login = function (username, password, captcha) {
@@ -137,7 +137,7 @@ Provider.prototype.profiles = function () { return this.rpc('auth', 'getProfiles
 Provider.prototype.select = function (id) {
     var self = this;
     if (typeof id !== 'string' || !id || id.length > 128) return Promise.reject(new Error('INVALID_PROFILE'));
-    self.generation++; self.channels = []; self.vodCategories=null;self.vodMedia=null;self.catalogScans=null;self.rootCatalogs=null;self.playing = null;self.programsProgress = null;
+    self.generation++; self.channels = []; self.vodCategories=null;self.vodMedia=null;self.catalogScans=null;self.rootCatalogs=null;self.genreMaps=null;self.playing = null;self.programsProgress = null;
     return self.profiles().then(function (profiles) {
         if (!profiles.some(function (p) { return p.id === id; })) throw new Error('INVALID_PROFILE');
         return self.rpc('auth', 'setSessionProfile', {profileId: id});
@@ -220,11 +220,7 @@ Provider.prototype.catalog = function(kind, id, offset) {
     self.vodCategories=self.vodCategories||Object.create(null);self.vodMedia=self.vodMedia||Object.create(null);
     function root(){
         if(id!==undefined)return self.knownCategory(kind,id).then(function(){return id;});
-        return self.rpc('navigation','getHomeMenu',{}).then(function(menu){
-            if(!Array.isArray(menu))throw new Error('INVALID_RESPONSE');
-            var item=menu.find(function(x){return x.name===(kind==='series'?'Seriale':'Programy') && x.place && x.place.type==='category';});
-            if(!item)throw new Error('CATALOG_UNAVAILABLE');return String(item.place.value);
-        });
+        return self.catalogRoot(kind);
     }
     return Promise.resolve().then(root).then(function(catid){parentId=String(catid);return self.rpc('navigation','getCategoryContent',{catid:Number(catid),offset:offset,limit:100,filters:[]});}).then(function(result){
         if(generation!==self.generation)throw new Error('STALE_REQUEST');
@@ -260,9 +256,54 @@ Provider.prototype.catalog = function(kind, id, offset) {
                 if(category)self.vodCategories[key]=item;
                 return item;
             });
-            return {items:items,next:offset+result.limit<result.total?offset+result.limit:null};
+            var page={items:items,next:offset+result.limit<result.total?offset+result.limit:null};
+            if(id!==undefined)return page;
+            // Root titles get every genre Netia's filter lists them under; a failed filter lookup leaves the page as it is.
+            return self.catalogFilters(kind,parentId).then(function(data){
+                if(generation!==self.generation)throw new Error('STALE_REQUEST');
+                // Categories come only from Netia's Filtruj: a title is under every tag whose filter finds it, and nowhere else.
+                var map=Object.create(null),names=[];data.lists.forEach(function(list){list.filters.forEach(function(filter){if(filter.type!=='genres')return;names.push(filter.value);filter.ids.forEach(function(key){(map[key]=map[key]||[]).push(filter.value);});});});
+                if(names.length)items.forEach(function(item){if(item.category)item.genres=(map[item.id]||[]).slice(0,12);});
+                return page;
+            },function(error){if(error.message==='STALE_REQUEST')throw error;return page;});
         });
     });
+};
+// Netia's catalogue pages filter titles with the Gatunki list of its "Filtruj" panel (only that list is used). The
+// filter also finds titles whose own record lacks the value, so each switch is one filtered listing (a few at a time),
+// and the result names the root titles every switch selects.
+Provider.prototype.catalogRoot = function(kind) {
+    return this.rpc('navigation','getHomeMenu',{}).then(function(menu){
+        if(!Array.isArray(menu))throw new Error('INVALID_RESPONSE');
+        var item=menu.find(function(x){return x.name===(kind==='series'?'Seriale':'Programy') && x.place && x.place.type==='category';});
+        if(!item)throw new Error('CATALOG_UNAVAILABLE');return String(item.place.value);
+    });
+};
+Provider.prototype.catalogFilters = function(kind,catid) {
+    var self=this,generation=self.generation,cache;
+    if(!self.auth||!self.auth.profileId)return Promise.reject(new Error('PROFILE_REQUIRED'));
+    if(['series','shows'].indexOf(kind)<0)return Promise.reject(new Error('INVALID_CATALOG'));
+    cache=self.genreMaps=self.genreMaps||Object.create(null);
+    if(cache[kind])return cache[kind];
+    var lists=[],jobs=[];
+    var load=(catid!==undefined?Promise.resolve(String(catid)):self.catalogRoot(kind)).then(function(root){catid=root;return self.rpc('navigation','getCategoryWithFlatNavigation',{catid:Number(root)});}).then(function(category){
+        if(generation!==self.generation)throw new Error('STALE_REQUEST');
+        ((category&&category.flatNavigation&&category.flatNavigation.filterLists)||[]).slice(0,8).forEach(function(list){
+            if(!list||typeof list.name!=='string'||!Array.isArray(list.filters))return;
+            var filters=list.filters.filter(function(f){return f&&f.type==='genres'&&['type','value','name'].every(function(key){return typeof f[key]==='string'&&f[key]&&f[key].length<=100;});}).slice(0,60).map(function(f){var filter={name:f.name,type:f.type,value:f.value,ids:[]};jobs.push(filter);return filter;});
+            if(filters.length)lists.push({name:list.name.slice(0,100),filters:filters});
+        });
+        function page(filter,offset){return self.rpc('navigation','getCategoryContent',{catid:Number(catid),offset:offset,limit:100,filters:[{type:filter.type,value:filter.value}]}).then(function(result){
+            if(generation!==self.generation)throw new Error('STALE_REQUEST');
+            if(!result||!Array.isArray(result.results)||!Number.isFinite(result.total)||!Number.isInteger(result.limit)||result.limit<=0)throw new Error('INVALID_RESPONSE');
+            result.results.forEach(function(row){var x=row&&(row.object||row);if(!x||x.mediaType==='vod'||['string','number'].indexOf(typeof x.id)<0)return;var key=String(x.id);if(filter.ids.indexOf(key)<0)filter.ids.push(key);});
+            return offset+result.limit<result.total&&offset<5000?page(filter,offset+result.limit):null;
+        });}
+        var next=0;function worker(){if(next>=jobs.length)return Promise.resolve();return page(jobs[next++],0).then(worker);}
+        return Promise.all([worker(),worker(),worker(),worker()]);
+    }).then(function(){return {lists:lists};});
+    load.catch(function(){if(self.genreMaps&&self.genreMaps[kind]===load)delete self.genreMaps[kind];});
+    cache[kind]=load;return load;
 };
 // Category ids are learnt from catalogue pages. The app may show a series or show list from its saved copy, so this
 // session may not have paged through it yet: page the root catalogue once (shared by concurrent callers) and check again.
@@ -421,7 +462,7 @@ Provider.prototype.license = function (challenge) {
         return license;
     });
 };
-Provider.prototype.clear = function () { this.playbackDiagnostic=null; this.vodCategories=null;this.vodMedia=null;this.catalogScans=null;this.rootCatalogs=null;this.auth = null; this.channels = []; this.playing = null; this.generation++; };
+Provider.prototype.clear = function () { this.playbackDiagnostic=null; this.vodCategories=null;this.vodMedia=null;this.catalogScans=null;this.rootCatalogs=null;this.genreMaps=null;this.auth = null; this.channels = []; this.playing = null; this.generation++; };
 exports.Provider = Provider;
 exports.token = token;
 

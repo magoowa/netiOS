@@ -12,6 +12,10 @@ module.exports = function (directory) {
         var profile=value.profile;
         if(profile && (typeof profile.id!=='string'||!profile.id||profile.id.length>256||typeof profile.name!=='string'||profile.name.length>256))throw new Error('INVALID_PROFILE');
         var clean={username:value.username,profile:profile?{id:profile.id,name:profile.name}:null,remember:value.remember===true || value.remember===undefined && typeof value.password==='string' && !!value.password};
+        // The Netia session of a remembered sign-in, so the next start needs neither the form nor the password.
+        var kept=value.session;
+        if(clean.remember&&kept&&kept.session&&typeof kept.session.id==='string'&&kept.session.id.length<=1024&&typeof kept.session.key==='string'&&/^[A-Za-z0-9+\/_=-]{1,4096}$/.test(kept.session.key)&&Number.isFinite(kept.session.keyExpirationTime)&&['clientId','deviceId'].every(function(k){return typeof kept[k]==='string'&&kept[k]&&kept[k].length<=256;}))
+            clean.session={session:{id:kept.session.id,key:kept.session.key,keyExpirationTime:kept.session.keyExpirationTime},clientId:kept.clientId,deviceId:kept.deviceId};
         if(clean.remember && value.password!==undefined){
             if(typeof value.password!=='string'||!value.password||value.password.length>1024)throw new Error('INVALID_CREDENTIALS');
             clean.password=value.password;

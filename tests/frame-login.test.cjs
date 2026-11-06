@@ -13,11 +13,25 @@ function fixture(pending=false,manual=false){
  const context={T:require('../app/texts'),Promise,Date,Error,SyntaxError,setInterval,clearInterval,setTimeout,clearTimeout,document:{getElementById:()=>frame},webOS:{deviceInfo(callback){callback({sdkVersion:'5.6.1'})}}};
  if(manual)Object.assign(context,{JSON,Date:{now:()=>now},setInterval(fn){intervals.add(fn);return fn;},clearInterval(fn){intervals.delete(fn);},setTimeout(){},clearTimeout(){}});
  context.window=context;vm.runInNewContext(fs.readFileSync('app/frame-login.js','utf8'),context);
- return {api:context.NetiaFrameLogin,frame,w,writes,submitted,buttons,context,tick(){now+=101;for(const fn of [...intervals])fn();}};
+ return {api:context.NetiaFrameLogin,frame,w,writes,submitted,buttons,context,fields,tick(){now+=101;for(const fn of [...intervals])fn();}};
 }
 test('official iframe login rejects partner consent, fills once and uses the provider cookie store without a RAM cookie shim',async()=>{
  const f=fixture(),result=await f.api.open({username:'synthetic-user',password:'synthetic-password'},()=>{});
  assert.equal(result.session.id,'synthetic-session');assert.equal(result.clientId,'synthetic-client');assert.equal(result.deviceId,'synthetic-device');assert.deepEqual(f.submitted,[['synthetic-user','synthetic-password']]);assert.equal(f.buttons[0].visible,false);assert(f.writes.includes('credentials'));assert.equal(f.w.localStorage.getItem('credentials'),null);assert(f.writes.includes('cookie'));assert.equal(f.w.webOS,f.context.webOS);assert.equal(f.frame.src,'about:blank');
+});
+test('a rejected password opens the form once, restores only the login and leaves the password to the user',async()=>{
+ const f=fixture(true,true),events=[];f.buttons[0].visible=false;const promise=f.api.open({username:'synthetic-user',password:'synthetic-password'},()=>{},true,false,reason=>events.push(reason));
+ f.tick();f.tick();
+ f.w.document.body={textContent:'B\u0142\u0105d logowania. Nieprawid\u0142owy login lub has\u0142o.'};f.tick();f.tick();
+ assert.deepEqual(events.filter(Boolean),['rejected']);
+ f.w.document.body={textContent:''};const Input=f.w.HTMLInputElement;f.fields.username=new Input();f.fields.password=new Input();f.tick();
+ assert.equal(f.fields.username.value,'synthetic-user');assert.equal(f.fields.password.value,'');assert.equal(f.submitted.length,1,'the automated attempt is not repeated');
+ f.api.cancel();await assert.rejects(promise,/LOGIN_CANCELLED/);
+});
+test('the form comes back when the page leaves it for /start',async()=>{
+ const f=fixture(true,true);f.buttons[0].visible=false;const promise=f.api.open({username:'synthetic-user'},()=>{},true);f.tick();
+ f.w.location.pathname='/start';f.frame.url='';f.tick();assert.equal(f.frame.src,'https://go.netia.pl/login');
+ f.api.cancel();await assert.rejects(promise,/LOGIN_CANCELLED/);
 });
 test('cancelling iframe login rejects the pending attempt and unloads its document',async()=>{
  const f=fixture(true,true);f.buttons[0].visible=false;const promise=f.api.open({username:'synthetic-user',password:'synthetic-password'},()=>{});f.tick();assert.equal(f.w.document.querySelector('password').value,'synthetic-password');f.api.cancel();await assert.rejects(promise,/LOGIN_CANCELLED/);assert.equal(f.frame.src,'about:blank');assert.equal(f.submitted.length,0);
@@ -99,9 +113,9 @@ test('E0: expired cookies allow form login but malformed JSON ends the attempt b
  f.tick();await assert.rejects(malformed,/INVALID_SESSION/);assert.equal(f.submitted.length,1);
 });
 
-function controllerFixture(api,rpc){
+function controllerFixture(api,rpc,legacyEngine=false){
  const source=fs.readFileSync('app/main.js','utf8'),nodes={},events=[];
- const context={Promise,Error,Object,T:require('../app/texts'),clearTimeout(){},loginTimer:null,loginRevision:0,pendingLogin:null,
+ const context={Promise,Error,Object,T:require('../app/texts'),clearTimeout(){},loginTimer:null,loginRevision:0,pendingLogin:null,legacyEngine,
   NetiaFrameLogin:api,rpc,$:id=>nodes[id]||(nodes[id]={}),show:screen=>events.push(screen),loginStage(){},notice:error=>events.push(error.message),
   profiles:()=>rpc('profiles')};
  vm.createContext(context);
@@ -244,4 +258,11 @@ test('a rejected imported session is discarded and the login screen shows, witho
  await f.context.start();
  assert.deepEqual(calls,['importedSession','rememberedAccount','acceptFrameSession','discardImportedSession']);
  assert.equal(f.events.at(-1),'INVALID_SESSION');assert.equal(f.events.includes('login'),true);
+});
+
+test('webOS 4 (Chromium 53) without an imported session asks for Import-Session instead of opening the official form',async()=>{
+ const calls=[],api={open:async()=>{calls.push('iframe');return null;},forget:async()=>{calls.push('forget');},cancel(){}};
+ const rpc=async method=>{calls.push(method);return method==='rememberedAccount'?{username:'synthetic-user',password:'synthetic-password',remember:true}:null;};
+ const {context,events}=controllerFixture(api,rpc,true);await context.officialLogin(undefined,undefined,true).catch(()=>{});
+ assert.equal(calls.indexOf('iframe'),-1,'The official form is never opened on webOS 4');assert(events.indexOf('login')>=0,'The login screen with the import hint is shown');
 });

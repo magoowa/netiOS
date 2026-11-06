@@ -39,7 +39,7 @@
                 var captured = null, formReady=false, scanned=0, openedAt=Date.now(), submittedAt=0;status(T("text.odczyt_wersji_systemu_i_przygotowanie_logowania"));
                 // A remembered account signs in behind the app's own screen; the form appears only when the user is needed:
                 // a challenge, a rejected attempt (manual), or no session 20 s after the automated submit (30 s overall).
-                var quiet = !!(credentials && credentials.password && !manual);
+                var quiet = !!(credentials && credentials.password && !manual), filledField = null, rejectionShown = false, restarted = 0;
                 var shown = false;
                 function reveal() { if (shown) return; shown = true; if (view && view.classList) view.classList.add('form-ready'); if (typeof revealed === 'function') revealed(); }
                 var timer = setInterval(tick, 10), timeout = setTimeout(function () { finish(new Error('LOGIN_TIMEOUT')); }, credentials || interactive ? 300000 : 15000);
@@ -68,6 +68,18 @@
                         if (quiet && (submittedAt ? Date.now() - submittedAt > 20000 : Date.now() - openedAt > 30000)) { quiet = false; reveal(); status(T('login.manualSubmit')); }
                         var session = readCookie(doc, 'user-session'), recognition = readCookie(doc, 'user-recognition');
                         if (session && recognition && Number.isFinite(session.keyExpirationTime) && session.keyExpirationTime * 1000 > Date.now()) return finish(null, {session: session, clientId: recognition.clientId, deviceId: recognition.deviceId});
+                        // Netia's Przerwij and logo lead to /start, which answers 502 inside the frame: go back to the form.
+                        if (/^\/start/.test(String(w.location.pathname)) && Date.now() - restarted > 5000) { restarted = Date.now(); status(T("text.wczytywanie_oficjalnego_formularza_netia_go")); frame.src = 'https://go.netia.pl/login'; return; }
+                        // A rejected password is never kept in the form or sent again by itself: the user decides what to type.
+                        var rejected = !!doc.body && /Nieprawid\u0142owy login lub has\u0142o/i.test(doc.body.textContent);
+                        if (rejected && !rejectionShown) { quiet = false; reveal(); status(T('login.rejected')); if (credentials) delete credentials.password; if (typeof revealed === 'function') revealed('rejected'); }
+                        rejectionShown = rejected;
+                        // Netia's Przerwij and logo lead to /start, which answers 502 inside the frame: go back to the form.
+                        if (/^\/start/.test(String(w.location.pathname)) && Date.now() - restarted > 5000) { restarted = Date.now(); status(T("text.wczytywanie_oficjalnego_formularza_netia_go")); frame.src = 'https://go.netia.pl/login'; return; }
+                        // A rejected password is never kept in the form or sent again by itself: the user decides what to type.
+                        var rejected = !!doc.body && /Nieprawid\u0142owy login lub has\u0142o/i.test(doc.body.textContent);
+                        if (rejected && !rejectionShown) { quiet = false; reveal(); status(T('login.rejected')); if (credentials) delete credentials.password; if (typeof revealed === 'function') revealed('rejected'); }
+                        rejectionShown = rejected;
                         var failure = doc.body && doc.body.textContent.match(/podając kod:\s*\(?(\d{4,6})[:)]/i);
                         if (failure) return finish(new Error('RPC_' + failure[1]));
                         var buttons = Array.prototype.slice.call(doc.querySelectorAll('button'));
@@ -84,13 +96,15 @@
                         if (username && password && username.value && password.value) captured = {username: username.value, password: password.value};
                         if (!credentials && !interactive && username && password && doc.readyState === 'complete' && w.next && w.next.router && w.next.router.isReady) return finish(new Error('LOGIN_REQUIRED'));
                         if (credentials && username && password && doc.readyState === 'complete' && w.next && w.next.router && w.next.router.isReady) {
+                            // Netia empties the form after a rejection by building new fields; the login is restored into them.
+                            if(filled&&filledField!==username)filled=false;
                             if(filled){
                                 if(credentials.password&&!manual&&!autoSubmitted&&!challenge&&submit&&!submit.disabled&&captchaReady(w,doc)){autoSubmitted=true;submittedAt=Date.now();submit.click();status(T("text.logowanie_w_serwisie_netia_go"));}
                                 return;
                             }
                             var setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
                             setter.call(username, credentials.username); username.dispatchEvent(new w.Event('input', {bubbles: true})); username.dispatchEvent(new w.Event('change', {bubbles: true}));
-                            filled = true;
+                            filled = true; filledField = username;
                             if(!credentials.password)return;
                             setter.call(password, credentials.password); password.dispatchEvent(new w.Event('input', {bubbles: true})); password.dispatchEvent(new w.Event('change', {bubbles: true}));
                             username.addEventListener('input', function () { if (credentials) credentials.username = username.value; });

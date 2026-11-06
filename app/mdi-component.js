@@ -46,10 +46,55 @@
         var host=select.parentNode;
         if(!host.classList.contains('sort-control')){host=document.createElement('span');select.parentNode.insertBefore(host,select);host.appendChild(select);}
         host.classList.add('mdi-select');var overlay=document.createElement('span');overlay.className='mdi-select-content';overlay.setAttribute('aria-hidden','true');host.appendChild(overlay);
-        function update(){overlay.textContent='';overlay.appendChild(content(null,select.options[select.selectedIndex].textContent,select.id==='oled-minutes'?'sort-clock-ascending-outline':'sort'));refresh(overlay);}
+        function update(){var chosen=select.options[select.selectedIndex];overlay.textContent='';if(!chosen)return;overlay.appendChild(content(null,chosen.textContent,select.id==='oled-minutes'?'sort-clock-ascending-outline':select.id==='autonext-seconds'?'clock-start':'sort'));refresh(overlay);}
         select.addEventListener('change',update);select.mdiUpdate=update;update();
+        // The browser's own popup is square and cannot be styled; the list opens here instead.
+        select.addEventListener('mousedown',function(e){if(e.button!==0)return;e.preventDefault();if(openMenu&&openMenu.select===select)closeMenu();else openList(select,host);});
     });}
-    window.NetiosIcons={set:set,selects:selects};
+    // An open select shows its options in a panel just below the field, rounded like the field itself. Up/Down move,
+    // OK chooses, Back or any other key closes it; the remote never reaches the browser's popup.
+    var openMenu=null;
+    function closeMenu(focus){
+        if(!openMenu)return;var menu=openMenu;openMenu=null;
+        if(menu.panel.parentNode)menu.panel.parentNode.removeChild(menu.panel);menu.host.classList.remove('mdi-select-open');menu.host.parentNode.classList.remove('mdi-menu-open');
+        ['borderTopLeftRadius','borderTopRightRadius','borderBottomLeftRadius','borderBottomRightRadius'].forEach(function(key){menu.select.style[key]='';});
+        if(focus!==false)menu.select.focus({preventScroll:true});
+    }
+    function openList(select,host){
+        closeMenu(false);
+        var style=getComputedStyle(select),panel=document.createElement('div'),radius=Math.min(parseFloat(style.borderTopLeftRadius)||0,select.offsetHeight/2);
+        // The field opens downwards into one shape with the list: the field keeps its rounded top, the list continues its
+        // sides under the field's bottom edge (the divider) and ends with the field's rounding. The values in the list start
+        // where the value in the field does.
+        select.style.borderTopLeftRadius=select.style.borderTopRightRadius=radius+'px';select.style.borderBottomLeftRadius=select.style.borderBottomRightRadius='0';
+        panel.className='mdi-select-menu';panel.setAttribute('role','listbox');panel.style.borderRadius='0 0 '+radius+'px '+radius+'px';panel.style.borderColor=style.borderLeftColor;
+        panel.style.left=select.offsetLeft+'px';panel.style.width=select.offsetWidth+'px';panel.style.top=(select.offsetTop+select.offsetHeight)+'px';
+        var label=host.querySelector('.icon-label'),inset=label?Math.round(label.getBoundingClientRect().left-select.getBoundingClientRect().left):24;
+        Array.prototype.forEach.call(select.options,function(option,index){
+            var button=document.createElement('button');button.type='button';button.className='mdi-select-option';button.setAttribute('role','option');
+            button.setAttribute('aria-selected',String(index===select.selectedIndex));button.textContent=option.textContent;button.style.borderRadius=Math.max(0,radius-8)+'px';button.style.paddingLeft=Math.max(0,inset-10)+'px';
+            button.addEventListener('mousedown',function(e){e.preventDefault();});
+            button.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();choose(index);});
+            panel.appendChild(button);
+        });
+        function choose(index){var changed=select.selectedIndex!==index;select.selectedIndex=index;closeMenu();if(changed)select.dispatchEvent(new Event('change',{bubbles:true}));}
+        host.appendChild(panel);host.classList.add('mdi-select-open');host.parentNode.classList.add('mdi-menu-open');openMenu={select:select,host:host,panel:panel,choose:choose};
+        (panel.children[select.selectedIndex]||panel.firstChild).focus({preventScroll:true});
+    }
+    window.addEventListener('keydown',function(e){
+        var active=document.activeElement;
+        if(openMenu){
+            var options=Array.prototype.slice.call(openMenu.panel.children),index=options.indexOf(active);
+            e.preventDefault();e.stopImmediatePropagation();
+            if(e.keyCode===38||e.keyCode===40){var next=options[Math.max(0,Math.min(options.length-1,(index<0?openMenu.select.selectedIndex:index)+(e.keyCode===38?-1:1)))];if(next)next.focus({preventScroll:true});return;}
+            if(e.keyCode===13){if(index>=0)openMenu.choose(index);else closeMenu();return;}
+            closeMenu();return;
+        }
+        if(e.keyCode===13&&active&&active.tagName==='SELECT'&&active.parentNode.classList.contains('mdi-select')){e.preventDefault();e.stopImmediatePropagation();openList(active,active.parentNode);}
+    },true);
+    document.addEventListener('mousedown',function(e){if(openMenu&&!openMenu.host.contains(e.target))closeMenu(false);},true);
+    document.addEventListener('focusin',function(e){if(openMenu&&!openMenu.panel.contains(e.target)&&e.target!==openMenu.select)closeMenu(false);});
+    window.NetiosIcons={set:set,selects:selects,closeMenu:closeMenu};
     function fontsReady(){metrics=Object.create(null);refresh(document);}
     document.fonts.ready.then(fontsReady);document.fonts.addEventListener('loadingdone',fontsReady);
 }());

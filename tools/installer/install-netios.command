@@ -130,10 +130,11 @@ if [[ -n "$ipk" ]]; then
   setup=$(mktemp); payload=$(mktemp)
   if [[ -f "$here/tv-setup.sh" ]]; then cp "$here/tv-setup.sh" "$setup"; else curl -fsSL "https://raw.githubusercontent.com/$REPO/main/tools/installer/tv-setup.sh" -o "$setup" || exit 1; fi
   cat "$setup" "$ipk" > "$payload"
-  n1=$(wc -c < "$setup" | tr -d ' '); n=$(wc -c < "$payload" | tr -d ' ')
+  n1=$(wc -c < "$setup" | tr -d ' '); n=$(wc -c < "$payload" | tr -d ' '); hash=$(shasum -a 256 "$payload" | cut -d' ' -f1)
   # The TV has no listening netcat, so Node receives tv-setup.sh + the IPK on port 5599 while this Mac pushes them;
-  # the bootstrap travels base64-encoded so no quoting survives the SSH/telnet command line.
-  boot="W=/tmp/netios-install; mkdir -p \$W; node -e 'var n=+process.argv[2],f=require(\"fs\").createWriteStream(process.argv[1]),g=0;require(\"net\").createServer(function(c){c.on(\"data\",function(d){f.write(d);g+=d.length;if(g>=n)f.end(function(){process.exit(0)})})}).listen(5599);setTimeout(function(){process.exit(1)},300000)' \$W/p $n || exit 1; dd if=\$W/p of=\$W/s.sh bs=1 count=$n1 2>/dev/null; tail -c +$((n1 + 1)) \$W/p > \$W/n.ipk; rm \$W/p; sh \$W/s.sh --local \$W/n.ipk"
+  # the bootstrap travels base64-encoded so no quoting survives the SSH/telnet command line. Its SHA-256 travels in the
+  # same (SSH/telnet) command, and the TV runs nothing it received unless the hash matches.
+  boot="W=/tmp/netios-install; mkdir -p \$W; node -e 'var n=+process.argv[2],h=process.argv[3],f=require(\"fs\").createWriteStream(process.argv[1]),x=require(\"crypto\").createHash(\"sha256\"),g=0;require(\"net\").createServer(function(c){c.on(\"data\",function(d){if(g+d.length>n){c.destroy();return}f.write(d);x.update(d);g+=d.length;if(g>=n)f.end(function(){process.exit(x.digest(\"hex\")===h?0:2)})})}).listen(5599);setTimeout(function(){process.exit(1)},300000)' \$W/p $n $hash || { echo 'netiOS: paczka dotarla uszkodzona lub podmieniona (SHA-256), przerywam.'; rm -rf \$W; exit 1; }; dd if=\$W/p of=\$W/s.sh bs=1 count=$n1 2>/dev/null; tail -c +$((n1 + 1)) \$W/p > \$W/n.ipk; rm \$W/p; sh \$W/s.sh --local \$W/n.ipk"
   remote="echo $(printf '%s' "$boot" | base64 | tr -d '\n') | base64 -d | sh"
   echo "Instaluję lokalną paczkę ${ipk:t}."
   ( for i in {1..300}; do nc -w 3 "$tv" 5599 < "$payload" 2>/dev/null && break; sleep 1; done ) &

@@ -12,7 +12,7 @@ test('each remote notch moves one row whatever delta size the remote sends',()=>
 test('a stream of tiny deltas accumulates instead of skipping a row per event; reversal and pauses restart at once',()=>{
  const {Scrolling,clock}=load(),state={};let rows=0;for(let i=0;i<60;i++){clock.now+=5;rows+=Scrolling.steps(state,wheel(1),600);}
  assert.equal(rows,2,'60 one-pixel events are one row plus 59/40 of another');
- clock.now+=5;assert.equal(Scrolling.steps(state,wheel(-1),600),-1);clock.now+=1000;assert.equal(Scrolling.steps(state,wheel(-1),600),-1);
+ clock.now+=5;assert.equal(Scrolling.steps(state,wheel(-1),600),0,'A reversal within 150 ms is the wheel settling back');clock.now+=200;assert.equal(Scrolling.steps(state,wheel(-1),600),-1);clock.now+=1000;assert.equal(Scrolling.steps(state,wheel(-1),600),-1);
  const fast={};clock.now+=1000;Scrolling.steps(fast,wheel(120),600);clock.now+=10;assert.equal(Scrolling.steps(fast,wheel(1200),600),3,'A fast spin moves at most three rows per event');
 });
 test('pointer drift after a wheel is ignored briefly; a deliberate move, a timeout or a release ends the hold',()=>{
@@ -49,7 +49,7 @@ test('a new target mid-flight continues from the current position; prepending sh
 test('LG Magic Remote: merged events move as many rows as detents they hold, whichever arrives first',()=>{
  for(const sequence of [[53,159,53,212],[159,53,53]]){const {Scrolling,clock}=load(),state={};const moves=sequence.map(delta=>{clock.now+=30;return Scrolling.steps(state,wheel(delta),600);});
   const expected=sequence.map((delta,i)=>i===0&&delta>53?1:Math.min(3,Math.round(delta/53)));assert.deepEqual(moves,expected,JSON.stringify(sequence));}
- const {Scrolling,clock}=load(),state={};clock.now+=30;Scrolling.steps(state,wheel(53),600);clock.now+=30;assert.equal(Scrolling.steps(state,wheel(-159),600),-1,'A reversal starts with one row');clock.now+=30;assert.equal(Scrolling.steps(state,wheel(-159),600),-3);
+ const {Scrolling,clock}=load(),state={};clock.now+=30;Scrolling.steps(state,wheel(53),600);clock.now+=30;assert.equal(Scrolling.steps(state,wheel(-159),600),0,'A reversal 30 ms after a detent is the wheel settling back');clock.now+=200;assert.equal(Scrolling.steps(state,wheel(-159),600),-1,'A reversal starts with one row');clock.now+=30;assert.equal(Scrolling.steps(state,wheel(-159),600),-3);
 });
 test('layered lists move their content by transform during a motion and set scrollTop once, after it has stopped',()=>{
  const {Scrolling,list,run}=animated(),grid={style:{transform:''},nextElementSibling:null},hero={style:{transform:''},nextElementSibling:grid};

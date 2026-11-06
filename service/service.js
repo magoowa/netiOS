@@ -95,15 +95,20 @@ register('rememberedAccount', function () { return account.load().then(function 
 // the session expires, Netia rejects it (discardImportedSession) or the user logs out. acceptFrameSession validates it.
 var importFile = path.join(storage, 'import-session.json');
 function discardImport() { return unlink(importFile).catch(function (error) { if (error.code !== 'ENOENT') throw new Error('IMPORT_DELETE'); }); }
+function liveSession(data) { return data && typeof data === 'object' && data.session && Number.isFinite(data.session.keyExpirationTime) && data.session.keyExpirationTime * 1000 > Date.now() + 60000; }
+// The session of a remembered sign-in is kept in the encrypted account vault (saved: true marks it as this TV's own).
+function savedSession() { return account.load().then(function (saved) { return saved && liveSession(saved.session) ? {session: saved.session.session, clientId: saved.session.clientId, deviceId: saved.session.deviceId, saved: true} : null; }, function () { return null; }); }
+function dropSavedSession() { return account.load().then(function (saved) { if (saved && saved.session) return account.save(Object.assign({}, saved, {session: null})); }).catch(function () {}); }
 register('importedSession', function () {
     return read(importFile, 'utf8').then(function (text) {
         var data; try { data = text.length <= 65536 && JSON.parse(text); } catch (error) { data = null; }
-        var live = data && typeof data === 'object' && data.session && Number.isFinite(data.session.keyExpirationTime) && data.session.keyExpirationTime * 1000 > Date.now() + 60000;
-        if (!live) return discardImport().then(function () { return null; });
-        return {session: data.session, clientId: data.clientId, deviceId: data.deviceId};
-    }, function (error) { if (error.code === 'ENOENT') return null; throw new Error('IMPORT_READ'); });
+        if (!liveSession(data)) return discardImport().then(savedSession);
+        // A plain-text session written by an earlier version for this TV's own sign-in moves into the vault.
+        if (data.saved === true) return account.load().then(function (saved) { if (saved && saved.remember) return account.save(Object.assign({}, saved, {session: data})); }).catch(function () {}).then(discardImport).then(savedSession);
+        return {session: data.session, clientId: data.clientId, deviceId: data.deviceId, saved: false};
+    }, function (error) { if (error.code === 'ENOENT') return savedSession(); throw new Error('IMPORT_READ'); });
 }, true);
-register('discardImportedSession', function () { return discardImport().then(function () { return true; }); }, true);
+register('discardImportedSession', function () { return discardImport().then(dropSavedSession).then(function () { return true; }); }, true);
 register('acceptFrameSession', function (p) {
     if ((p.username !== undefined || p.password !== undefined) && (typeof p.username !== 'string' || !p.username.trim() || p.username.length > 256 || p.password !== undefined && (typeof p.password !== 'string' || !p.password || p.password.length > 1024))) throw new Error('INVALID_CREDENTIALS');
     if(p.remember!==undefined && typeof p.remember!=='boolean')throw new Error('INVALID_CREDENTIALS');
@@ -115,25 +120,47 @@ register('acceptFrameSession', function (p) {
             rememberedProfile = profile ? profile.id : null;
             var remember=p.remember===undefined?!!(saved && saved.remember):p.remember;
             if(remember && credentials && !credentials.password && saved && saved.username===credentials.username && saved.password)credentials.password=saved.password;
-            var persist=credentials ? account.save(Object.assign({}, credentials, {profile: profile,remember:remember})) : Promise.resolve();
+            var kept=p.session&&p.clientId&&p.deviceId?{session:p.session,clientId:p.clientId,deviceId:p.deviceId}:saved&&saved.session;
+            var persist=credentials ? account.save(Object.assign({}, credentials, {profile: profile,remember:remember,session:remember?kept:null})) : Promise.resolve();
             return persist.then(function(){if(!remember)return unlink(file).catch(function(error){if(error.code!=='ENOENT')throw error;});}).then(function(){return true;});
         });
     });
 }, true);
 register('profiles', function () { return provider.profiles(); });
-register('profilePreference', function () { return account.load().then(function (saved) { return saved && saved.profile || null; }); });
+// The chosen profile is also kept on its own, tied to the Netia account (a hash of its id), so a sign-in without a stored
+// login (a session moved over from a computer on webOS 4) remembers it too.
+var profileFile = path.join(storage, 'profile.json');
+function accountTag() { return provider.auth && provider.auth.accountKey || null; }
+function profileHint() {
+    return read(profileFile, 'utf8').then(function (text) {
+        var data = text.length <= 4096 ? JSON.parse(text) : null;
+        return data && data.account === accountTag() && typeof data.id === 'string' && data.id && data.id.length <= 256 && typeof data.name === 'string' && data.name.length <= 256 ? {id: data.id, name: data.name} : null;
+    }).catch(function () { return null; });
+}
+function keepProfileHint(profile) {
+    if (!profile) return unlink(profileFile).catch(function () {});
+    var temp = profileFile + '.' + crypto.randomBytes(8).toString('hex') + '.tmp';
+    return promisify(fs.mkdir)(storage, 448).catch(function () {}).then(function () { return write(temp, JSON.stringify({account: accountTag(), id: profile.id, name: profile.name}), {mode: 384, flag: 'wx'}); }).then(function () { return rename(temp, profileFile); }).catch(function () { return unlink(temp).catch(function () {}); });
+}
+register('profilePreference', function () { return profileHint().then(function (hint) { return hint || account.load().then(function (saved) { return saved && saved.profile || null; }, function () { return null; }); }); });
 register('selectProfile', function (p) {
     return provider.profiles().then(function (items) {
         var profile = items.find(function (item) { return item.id === p.id; });
         if (!profile) throw new Error('INVALID_PROFILE');
+        // automatic (an id or null) names the profile that signs in by itself, which need not be the one chosen now.
+        if (p.automatic !== undefined && p.automatic !== null && typeof p.automatic !== 'string') throw new Error('INVALID_PROFILE');
+        var automatic = p.automatic === undefined ? (p.remember === true ? profile : null) : p.automatic === null ? null : items.find(function (item) { return item.id === p.automatic; });
+        if (automatic === undefined) throw new Error('INVALID_PROFILE');
         return provider.select(p.id).then(function () {
-            rememberedProfile = p.remember === true ? p.id : null;
-            return account.load().then(function (saved) { if (!saved) return true; return account.save(Object.assign({}, saved, {profile: p.remember === true ? profile : null})).then(function () { return true; }); });
+            rememberedProfile = automatic ? automatic.id : null;
+            return keepProfileHint(automatic).then(function () { return account.load(); }).then(function (saved) { if (!saved) return true; return account.save(Object.assign({}, saved, {profile: automatic})).then(function () { return true; }); });
         });
     });
 }, true);
 register('channels', function () { return provider.list(); });
 register('userConfig', function(p){return userConfig(p.defaults);});
+// The tags of Netia's Filtruj (Gatunki) for a series or show catalogue, in Netia's order.
+register('catalogTags', function(p){return provider.catalogFilters(p.kind).then(function(data){var tags=[];data.lists.forEach(function(list){list.filters.forEach(function(filter){if(tags.indexOf(filter.name)<0)tags.push(filter.name);});});return {tags:tags};});});
 register('catalog', function(p){return provider.catalog(p.kind,p.id,p.offset===undefined?0:p.offset);});
 register('catalogArtwork', function(p){return provider.catalogArtwork(p.kind,p.id);});
 register('catalogDetails', function(p){return provider.catalogDetails(p.kind,p.id,p.refresh===true);});

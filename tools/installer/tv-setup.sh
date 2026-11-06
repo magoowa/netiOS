@@ -21,12 +21,14 @@ else
   BASE="https://raw.githubusercontent.com/$REPO/main/homebrew"
   echo "netiOS: pobieranie informacji o wydaniu z $REPO..."
   curl -fsSL "$BASE/com.netiago.webos.manifest.json" -o "$WORK/manifest.json"
-  # The manifest is JSON; webOS ships Node.js for app services, so it parses it reliably.
-  eval "$(node -e '
-  var m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
-  if(!/^https:\/\//.test(m.ipkUrl)||!/^[0-9a-f]{64}$/.test(m.ipkHash.sha256)||!/^[0-9.]+$/.test(m.version))throw Error("INVALID_MANIFEST");
-  console.log("URL=\""+m.ipkUrl+"\"; SHA=\""+m.ipkHash.sha256+"\"; VERSION=\""+m.version+"\"");
-  ' "$WORK/manifest.json")"
+  # The manifest is JSON; webOS ships Node.js for app services, so it parses it reliably. Its values are checked strictly
+  # (an HTTPS URL of plain URL characters only, a SHA-256, a numeric version) and read back as data, never run by the shell.
+  node -e '
+  var m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")),u=m&&m.ipkUrl,h=m&&m.ipkHash&&m.ipkHash.sha256,v=m&&m.version;
+  if(typeof u!=="string"||!/^https:\/\/[A-Za-z0-9.-]+\/[A-Za-z0-9._~\/%+-]*$/.test(u)||typeof h!=="string"||!/^[0-9a-f]{64}$/.test(h)||typeof v!=="string"||!/^[0-9.]+$/.test(v))throw Error("INVALID_MANIFEST");
+  require("fs").writeFileSync(process.argv[2],[u,h,v].join("\n")+"\n");
+  ' "$WORK/manifest.json" "$WORK/release" || { echo "netiOS: nieprawidłowy manifest wydania, przerywam."; rm -rf "$WORK"; exit 1; }
+  { read -r URL; read -r SHA; read -r VERSION; } < "$WORK/release"
   echo "netiOS: pobieranie wersji $VERSION..."
   curl -fL --retry 2 "$URL" -o "$IPK"
   echo "$SHA  $IPK" | sha256sum -c - >/dev/null || { echo "netiOS: niezgodna suma SHA-256, przerywam."; rm -rf "$WORK"; exit 1; }

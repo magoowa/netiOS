@@ -18,7 +18,7 @@
     function playbackTime(seconds){
         if(!Number.isFinite(seconds)||seconds<0)return null;
         seconds=Math.floor(seconds);
-        return [Math.floor(seconds/3600),Math.floor(seconds%3600/60),seconds%60].map(function(value){return String(value).padStart(2,'0');}).join(':');
+        return [Math.floor(seconds/3600),Math.floor(seconds%3600/60),seconds%60].map(function(value){return value<10?'0'+value:String(value);}).join(':');
     }
     function episodeTitle(title,parent,count){
         var value=title.trim(),prefix=(parent||'').trim();
@@ -27,7 +27,7 @@
         if(!words.length)return title;
         var separator='[\\s.,…:;!?"\'’„”«»()\\[\\]{}\\/–—-]',pattern=new RegExp('^'+words.map(function(word){return word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join(separator+'+'),'i'),match;
         while((match=value.match(pattern))){
-            var rest=value.slice(match[0].length),edition=rest.replace(/^\s+\d+\s*[:–—-]\s*(?=(?:odcinek|odc\.|epizod|część|sezon)(?:\s|\d|$))/i,'');
+            var rest=value.slice(match[0].length),edition=rest.replace(/^\s+(?:s(?:ezon)?\s*\d+|\d+|[ivxlc]+)\s*[:–—-]\s*(?=(?:odcinek|odc\.|epizod|część|sezon)(?:\s|\d|$))/i,'');
             if(edition!==rest)rest=edition;
             else if(!/^\s*[.,…:;!?"'’„”«»()\[\]{}\/–—-]/.test(rest)&&!/^\s+(?:odcinek|odc\.|epizod|część|sezon)(?:\s|\d|$)/i.test(rest))break;
             rest=rest.replace(new RegExp('^'+separator+'+'),'');if(!rest)break;value=rest;
@@ -37,8 +37,21 @@
     }
     function seasonNumber(item){return item.season&&Number.isInteger(item.season.number)&&item.season.number>=0?item.season.number:Infinity;}
     function catalogue(items,sort){var compare=new Intl.Collator('pl',{sensitivity:'base',numeric:true}).compare;return items.slice().sort(function(a,b){return (sort==='seasons'?seasonNumber(a)-seasonNumber(b)||(Number.isInteger(a.episodeNumber)?a.episodeNumber:Infinity)-(Number.isInteger(b.episodeNumber)?b.episodeNumber:Infinity):sort==='genres'?compare((a.genres||[])[0]||'\uffff',(b.genres||[])[0]||'\uffff'):0)||compare(a.title,b.title)||compare(a.id,b.id);});}
+    // Genres follow Netia's catalogue: a title is listed under each of its genres, the genres in alphabetical order and
+    // titles without any genre last (key '').
     function catalogueGroups(items,sort){
         var groups=[];
+        if(sort==='genres'){
+            var compare=new Intl.Collator('pl',{sensitivity:'base',numeric:true}).compare,members=Object.create(null),keys=[],none=[];
+            catalogue(items,'alphabetical').forEach(function(item){
+                var genres=(item.genres||[]).filter(function(genre,index,list){return typeof genre==='string'&&genre&&list.indexOf(genre)===index;});
+                if(!genres.length){none.push(item);return;}
+                genres.forEach(function(genre){if(!members[genre]){members[genre]=[];keys.push(genre);}members[genre].push(item);});
+            });
+            keys.sort(compare).forEach(function(key){groups.push({key:key,items:members[key]});});
+            if(none.length)groups.push({key:'',items:none});
+            return groups;
+        }
         catalogue(items,sort).forEach(function(item){
             var key=sort==='genres'?(item.genres||[])[0]||'':sort==='seasons'?(Number.isFinite(seasonNumber(item))?String(seasonNumber(item)):''):'';
             var group=groups[groups.length-1];
