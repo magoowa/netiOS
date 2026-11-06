@@ -27,24 +27,6 @@ Zrzuty z telewizora LG (webOS 5). Logotypy, nazwy kanałów, opisy i grafiki nal
 ![Wznawianie odcinków](docs/screenshots/resume.png)
 ![Opcje](docs/screenshots/options.png)
 
-## Budowanie
-
-Na komputerze: Node.js 22.22.2+, 24.15.0+ lub 26+ oraz npm 12.2.1. Instalacja korzysta z npm 12, które pomija shrinkwrap dostawcy CLI i respektuje poprawki bezpieczeństwa zależności. Nie wymaga to zmiany globalnego npm; użyj polecenia npx poniżej. OpenSSH jest potrzebne do opcjonalnych narzędzi TV. Testy UI i renderer grafik wymagają Brave; niestandardową ścieżkę można ustawić przez BRAVE_EXECUTABLE.
-
-```sh
-npx --yes npm@12.2.1 ci
-npm test
-npm run build
-npm run test:ui
-npm run licenses
-npm run release
-```
-
-Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
-
-Pakiet po buildzie: `dist/com.netiago.webos_0.7.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
-
-Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
 
 ## Instalacja
 
@@ -71,6 +53,27 @@ Sortowanie kanałów: Alfabetycznie (naturalna kolejność liczb w nazwach, np. 
 OLED Saver ma niezależny przełącznik ON/OFF i czas 30/60/90/120 minut bezczynności podczas oglądania TV. Wygaszacz pauzuje obraz; dowolny przycisk przywraca oglądanie. Autoodtwarzanie pokazuje następny odcinek 10, 30, 45 lub 75 s przed końcem i włącza go po 5 s odliczania. W Opcjach można też włączyć płynne przewijanie list, a w Diagnostyce panel wydajności (FPS, obciążenie procesora i pamięć RAM telewizora).
 
 Seriale i Programy: sortowanie Alfabetycznie lub według kategorii z panelu Filtruj Netii; przycisk Filtruj zawęża listę do wybranych gatunków. Przerwany odcinek startuje od miejsca zatrzymania, a postęp jest zapamiętany osobno dla każdego profilu.
+
+
+## Budowanie
+
+Na komputerze: Node.js 22.22.2+, 24.15.0+ lub 26+ oraz npm 12.2.1. Instalacja korzysta z npm 12, które pomija shrinkwrap dostawcy CLI i respektuje poprawki bezpieczeństwa zależności. Nie wymaga to zmiany globalnego npm; użyj polecenia npx poniżej. OpenSSH jest potrzebne do opcjonalnych narzędzi TV. Testy UI i renderer grafik wymagają Brave; niestandardową ścieżkę można ustawić przez BRAVE_EXECUTABLE.
+
+```sh
+npx --yes npm@12.2.1 ci
+npm test
+npm run build
+npm run test:ui
+npm run licenses
+npm run release
+```
+
+Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
+
+Pakiet po buildzie: `dist/com.netiago.webos_0.7.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
+
+Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
+
 
 ## Edycja i narzędzia
 
