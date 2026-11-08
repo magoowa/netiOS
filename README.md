@@ -42,7 +42,7 @@ npm run release
 
 Każda kolejna paczka testowa zawierająca zmiany otrzymuje nowy numer wersji. Build sprawdza zgodność numerów aplikacji, usługi i npm.
 
-Pakiet po buildzie: `dist/com.netiago.webos_0.7.0_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
+Pakiet po buildzie: `dist/com.netiago.webos_0.7.2_all.ipk`. Lokalny eksport release trafia do dist/release. Ten sam katalog zawiera manifest Homebrew, przezroczystą ikonę i SHA256SUMS. Publikuj wyłącznie sprawdzone artefakty; cały katalog roboczy zawiera prywatne materiały wyłączone z Git. Polecenie release tworzy też czyste repozytorium źródłowe w `dist/github/netiOS` z neutralnym autorem i jednym zatwierdzeniem, bez starej historii i danych testowych.
 
 Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI i LG SDK są dołączane lokalnie wraz z licencjami. Budowanie wykorzystuje jawną listę plików aplikacji i usługi.
 
@@ -50,7 +50,7 @@ Usługa TV jest zgodna z Node.js 8.12.0. Shaka Player 4.16.53, Josefin Sans, MDI
 
 **[Poradnik instalacji krok po kroku](docs/INSTALL.md)**: wymagania, instalacja i logowanie, ze zrzutami ekranu. Obejmuje webOS 4, gdzie logujesz się na komputerze, a narzędzie przenosi sesję na telewizor.
 
-W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.7.0-installer.zip` i uruchom:
+W skrócie: telewizor z rootem i Homebrew Channel (telnet lub SSH), komputer z Windows w tej samej sieci. Z wydania pobierz `netiOS-0.7.2-installer.zip` i uruchom:
 
 - **`Install-netiOS.cmd`**: wyszukuje telewizory, instaluje dołączoną paczkę przez SSH lub telnet i czeka na potwierdzenie od systemu. Alternatywnie paczkę wgrasz przez [Glasshouse](https://github.com/rorygallagher2024/glasshouse).
 - **`Import-Session.cmd`** (webOS 4): otwiera stronę logowania Netia GO w przeglądarce na komputerze; po zalogowaniu przenosi sesję na telewizor.

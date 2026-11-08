@@ -37,6 +37,9 @@
     messages.STALE_REQUEST=T('errors.staleRequest');
     messages.INVALID_PAGINATION=T('errors.pagination');
     messages.IMPORT_REQUIRED=T('login.importRequired');
+    messages.DRM_UNRESPONSIVE=T('errors.drmUnresponsive');
+    messages.LICENSE_TIMEOUT=T('errors.licenseTimeout');
+    messages.STREAM_TIMEOUT=T('errors.streamStart');
     function rpc(method, params) {
         return new Promise(function (resolve, reject) {
             if (typeof WebOSServiceBridge === 'undefined') return reject(new Error('WEBOS_REQUIRED'));
@@ -67,7 +70,7 @@
     var setIcon=NetiosIcons.set;
     Array.prototype.forEach.call(document.querySelectorAll('[data-icon]'), function (button) { setIcon(button, button.dataset.icon, button.dataset.text?T(button.dataset.text):undefined); });
     NetiosIcons.selects();
-    var oledMinutes=30,oledLastActivity=Date.now(),oledResume=false,oledEnabled=true;
+    var oledMinutes=30,oledLastActivity=Date.now(),oledEnabled=true;
     try{oledEnabled=localStorage.getItem('netios-oled-enabled')!=='false';}catch(error){}
     function oledState(){$('oled-toggle').setAttribute('aria-pressed',String(oledEnabled));setIcon($('oled-toggle'),'lifebuoy',T('options.oled')+' · '+T(oledEnabled?'options.on':'options.off'));}
     oledState();$('oled-toggle').onclick=function(){setOled(!oledEnabled);};
@@ -87,16 +90,40 @@
     Object.keys(optionHelp).forEach(function(id){$(id).onfocus=function(){$('option-help').textContent=T(optionHelp[id]);};});
     function wakeOled(event){
         oledLastActivity=Date.now();if($('oled-saver').hidden)return;
-        $('oled-saver').hidden=true;if(screen==='player'&&event){$('player-controls').hidden=false;reveal();if(oledResume)$('video').play().catch(notice);}oledResume=false;
+        $('oled-saver').hidden=true;if(screen==='player'&&event)reveal();
         if(event&&event.type!=='mousemove'){event.preventDefault();event.stopImmediatePropagation();}
     }
     ['keydown','mousedown','mousemove','wheel','touchstart'].forEach(function(name){document.addEventListener(name,wakeOled,{capture:true,passive:false});});
     setInterval(function(){
         if(!oledEnabled||screen!=='player'||selectedVod||document.hidden||!$('guide').hidden||modal){oledLastActivity=Date.now();return;}
-        if($('oled-saver').hidden&&Date.now()-oledLastActivity>=oledMinutes*60000){oledResume=!$('video').paused;$('video').pause();$('player-controls').hidden=true;$('oled-saver').hidden=false;}
+        // The saver only covers the screen: what plays keeps playing under it, and the first key takes it away.
+        if($('oled-saver').hidden&&Date.now()-oledLastActivity>=oledMinutes*60000)$('oled-saver').hidden=false;
     },1000);
     var lastRegisteredError=null;
-    function notice(error) { if(error)lastRegisteredError={time:netiaNow(),code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR',message:messages[error.message]||T('errors.generic',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR'})};clearTimeout(noticeTimer); $('notice').textContent = error ? messages[error.message] || T('errors.generic',{code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR'}) : ''; if(error)noticeTimer=setTimeout(function(){notice();},5000); }
+    // Error codes become text in one place. Answers of the Netia platform (RPC_, HTTP_), its licence server and its stream
+    // servers (PLAYER_ codes from Shaka, with the HTTP status when there is one) say where the fault is.
+    function errorText(message){
+        var code=/^[A-Z_0-9-]+$/.test(message)?message:'APP_ERROR',m;
+        if(messages[code])return messages[code];
+        if((m=/^RPC_(\d+)$/.exec(code)))return T('errors.netiaRpc',{code:m[1]});
+        if((m=/^HTTP_(\d+)$/.exec(code)))return T('errors.netiaHttp',{status:m[1]});
+        if(code==='INVALID_RESPONSE'||code==='RESPONSE_LIMIT')return T('errors.netiaInvalid');
+        if((m=/^PLAYER_(\d+)(?:_HTTP_(\d+))?(?:_([A-Z_0-9-]+))?$/.exec(code))){
+            var n=+m[1],licence=m[3];
+            if(licence&&messages[licence])return messages[licence];
+            if(licence&&licence!=='LICENSE_ERROR')return T('errors.netiaLicense',{code:licence});
+            if(n>=6000&&n<7000)return T('errors.drm',{code:n});
+            if(n===1001)return T('errors.streamHttp',{status:m[2]||'?'});
+            if(n===1003)return T('errors.streamTimeout');
+            if(n>=1000&&n<2000)return T('errors.streamNetwork');
+            if(n>=4000&&n<5000)return T('errors.streamManifest',{code:n});
+            if(n>=3000&&n<4000)return T('errors.streamMedia',{code:n});
+        }
+        return T('errors.generic',{code:code});
+    }
+    // Every sentence, and every clause after a semicolon, starts its own line in the notice.
+    function noticeLines(text){return text.replace(/;\s+/g,';\n').replace(/([.!?…])\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ0-9„"(])/g,'$1\n');}
+    function notice(error) { var text=error?errorText(error.message):'';if(error)lastRegisteredError={time:netiaNow(),code:/^[A-Z_0-9-]+$/.test(error.message)?error.message:'APP_ERROR',message:text};clearTimeout(noticeTimer); $('notice').textContent = noticeLines(text); if(error)noticeTimer=setTimeout(function(){notice();},text.length>70?9000:5000); }
     $('notice').onclick=function(){notice();};
     Array.prototype.forEach.call(document.querySelectorAll('.app-version'),function(n){n.textContent=T('version.label',{version:APP_VERSION});});
     // A stage that is still running ("…") gets animated dots instead of a static ellipsis.
@@ -642,11 +669,19 @@
     $('pin-back').onclick=pinBack;$('close-pin').onclick=function(){closeModal();};
     $('pin-remove').onclick=function(){prefs.hiddenPin=null;savePreferences();finishPin();};
     $('menu-pin').onclick=function(){askPin(prefs.hiddenPin?'change':'set');};
+    var startWatch=0,licenseState='',stallTimer=0;
+    function stalled(waiting){
+        clearTimeout(stallTimer);var message=$('player-message');
+        if(!waiting){if(message.dataset.stalled){message.textContent='';delete message.dataset.stalled;}return;}
+        if(playerConnecting)return;
+        stallTimer=setTimeout(function(){if(screen!=='player'||playerConnecting)return;message.textContent=T('player.stalled');message.dataset.stalled='1';reveal();},12000);
+    }
+    function playerCode(detail){var status=detail&&detail.code===1001&&detail.data&&Number.isFinite(detail.data[1])?'_HTTP_'+detail.data[1]:'';return 'PLAYER_'+detail.code+status+(licenseError?'_'+licenseError:'');}
     function stop() {
         saveProgress(true);samplePlayback();
         generation++; playerDay = ''; playerPrograms = []; clearTimeout(hideTimer); closeModal(false); playerConnecting=false; busySpinner();
         var old = player; player = null;
-        return Promise.resolve(old && old.destroy()).catch(function () {}).then(function () { $('video').pause(); $('video').removeAttribute('src'); $('video').load(); return rpc('stop').catch(function () {}); });
+        clearTimeout(startWatch);stalled(false);return Promise.race([Promise.resolve(old && old.destroy()),new Promise(function(resolve){setTimeout(resolve,3000);})]).catch(function () {}).then(function () { $('video').pause(); $('video').removeAttribute('src'); $('video').load(); return rpc('stop').catch(function () {}); });
     }
     // Episodes remember where viewing stopped, separately for every profile: position and length in seconds, the 400
     // most recent titles. A nearly finished episode counts as watched; a start resumes from the saved place.
@@ -724,12 +759,12 @@
             return Promise.race([navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{initDataTypes: ['cenc'], videoCapabilities: [{contentType: 'video/mp4; codecs="avc1.42E01E"'}]}]), new Promise(function (resolve, reject) { setTimeout(reject, 10000); })]).catch(function () { throw new Error('WIDEVINE_REQUIRED'); });
         }).then(function () { if (current !== generation) throw new Error('STALE_REQUEST'); progressStep('player',1); return rpc('play', {id: id, kind:vod?'vod':'tv',widevine: true, userAgent: navigator.userAgent}); }).then(function (data) {progressStep('player',2);
             if (current !== generation) throw new Error('STALE_REQUEST');
-            shaka.polyfill.installAll(); if (!shaka.Player.isBrowserSupported()) throw new Error('UNSUPPORTED_STREAM'); licenseError = '';
+            shaka.polyfill.installAll(); if (!shaka.Player.isBrowserSupported()) throw new Error('UNSUPPORTED_STREAM'); licenseError = '';licenseState='';
             player = new shaka.Player($('video'));
             player.getNetworkingEngine().registerRequestFilter(function (type, request) { request.uris = request.uris.map(function (uri) { return uri.replace(/^http:\/\//, 'https://'); }); });
             shaka.net.NetworkingEngine.registerScheme('netia-license', function (uri, request) {
                 var bytes = new Uint8Array(request.body), text = ''; for (var i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]); var aborted = false;
-                var result = rpc('license', {challenge: btoa(text)}).catch(function (error) { licenseError = /^[A-Z_0-9-]+$/.test(error.message) ? error.message : 'LICENSE_ERROR'; throw error; }).then(function (encoded) {progressStep('player',3);
+                licenseState='pending';var result = rpc('license', {challenge: btoa(text)}).catch(function (error) { licenseState='failed';licenseError = /^[A-Z_0-9-]+$/.test(error.message) ? error.message : 'LICENSE_ERROR'; throw error; }).then(function (encoded) {licenseState='done';progressStep('player',3);
                     if (aborted || current !== generation) throw new Error('STALE_REQUEST');
                     var binary = atob(encoded.replace(/-/g, '+').replace(/_/g, '/')), answer = new Uint8Array(binary.length);
                     for (var j = 0; j < binary.length; j++) answer[j] = binary.charCodeAt(j);
@@ -739,12 +774,20 @@
             var playbackConfig={streaming: {bufferingGoal: 20, rebufferingGoal: 2}, abr: {enabled: false}};
             if(data.drm==='widevine')playbackConfig.drm={servers: {'com.widevine.alpha': 'netia-license://widevine'}};
             player.configure(playbackConfig);
-            player.addEventListener('error', function (event) { if (current === generation) { $('player-message').textContent='';notice(new Error('PLAYER_'+event.detail.code+(licenseError?'_'+licenseError:'')));reveal(); } });
+            player.addEventListener('error', function (event) { if (current === generation) { $('player-message').textContent='';notice(new Error(playerCode(event.detail)));reveal(); } });
+            player.addEventListener('buffering', function (event) { if (current === generation) stalled(event.buffering); });
+            // Nothing in a start may wait for ever: a CDM that stops answering, a licence or a stream that never comes all end
+            // here after 20 s, back on the list with the reason.
+            clearTimeout(startWatch);startWatch=setTimeout(function(){
+                if(current!==generation||!playerConnecting)return;
+                var code=data.drm==='widevine'&&!$('video').mediaKeys?'DRM_UNRESPONSIVE':licenseState==='pending'?'LICENSE_TIMEOUT':'STREAM_TIMEOUT';
+                backToChannels().then(function(){notice(new Error(code));});
+            },20000);
             return player.load(data.url,undefined,data.mimeType||'application/dash+xml').then(function () {
-                if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE');
+                clearTimeout(startWatch);if (current !== generation) return; if(start !== undefined && !seekProgramme(start, end))throw new Error('BUFFER_UNAVAILABLE');
                 if(vod){var resume=episodeProgress(vod.id);if(resume&&resume.p>=30&&resume.d-resume.p>=60)$('video').currentTime=resume.p;} chooseQuality('highest'); $('player-message').textContent = ''; playerConnecting=false; busySpinner(); playerDay = ''; tick(); reveal(); return startVideo(current);
             });
-        }).catch(function (error) { if (current !== generation) return; return backToChannels().then(function () { throw typeof error.code==='number'?new Error('PLAYER_'+error.code+(licenseError?'_'+licenseError:'')):error; }); });
+        }).catch(function (error) { clearTimeout(startWatch); if (current !== generation) return; return backToChannels().then(function () { throw typeof error.code==='number'?new Error(playerCode(error)):error; }); });
     }
     function reveal() {
         clearTimeout(hideTimer); $('player-controls').classList.remove('controls-hidden');

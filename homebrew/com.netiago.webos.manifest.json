@@ -1,13 +1,13 @@
 {
   "id": "com.netiago.webos",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "type": "web",
   "title": "netiOS",
   "appDescription": "netiOS — nieoficjalny klient Netia GO: profile, kanały w pakiecie i odtwarzanie Widevine. Najwyższa jakość na start. Wymaga subskrypcji.",
   "iconUri": "https://raw.githubusercontent.com/magoowa/netiOS/main/homebrew/icon.png",
   "rootRequired": false,
-  "ipkUrl": "https://github.com/magoowa/netiOS/releases/download/v0.7.0/com.netiago.webos_0.7.0_all.ipk",
+  "ipkUrl": "https://github.com/magoowa/netiOS/releases/download/v0.7.2/com.netiago.webos_0.7.2_all.ipk",
   "ipkHash": {
-    "sha256": "32aa1c85ef32b57dd9b94f9601b60e76e6de58077e2dbdd6cdafea71d0c20962"
+    "sha256": "13de3488c2e20765b5941720bda2f1785e58eb98cf2d49bdae171e44bc66d745"
   }
 }

@@ -1,5 +1,18 @@
 # Historia zmian netiOS
 
+## 0.7.2
+
+### Odtwarzacz
+
+- Start kanału nie wisi już bez końca. Po 20 s aplikacja wraca do listy i mówi, gdzie utknęła: moduł DRM (Widevine) telewizora nie odpowiada, serwer licencji Netii nie odpowiada albo Netia nie dostarczyła obrazu.
+- Błędy platformy Netia mają czytelne komunikaty: odpowiedź usługi (kod RPC, błąd HTTP, nieprawidłowa odpowiedź), licencja, błędy HTTP i brak połączenia z serwerem strumienia, nieprawidłowy opis strumienia. Długie buforowanie w trakcie oglądania pokazuje na ekranie, że strumień Netii nie dostarcza danych.
+- Zamknięcie odtwarzacza z zawieszonym modułem DRM trwa najwyżej 3 s.
+- OLED Saver tylko zasłania ekran: obraz i dźwięk grają dalej, a pierwsze naciśnięcie pilota zdejmuje wygaszacz i nic więcej nie robi. Na webOS 4 i 5 wygaszacz zasłania cały ekran (wcześniej był niewidoczny, a obraz stawał).
+
+### Komunikaty
+
+- Każde zdanie komunikatu, i każda część po średniku, zaczyna się od nowej linii.
+
 ## 0.7.0
 
 ### Seriale i Programy

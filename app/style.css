@@ -1992,7 +1992,11 @@ button:active,button[aria-pressed=true]:active {
 
 #oled-saver {
   position: fixed;
-  inset: 0;
+  /* Not inset: webOS 4 and 5 (Chromium 53/68) do not know it, and the saver would have no size. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: #000;
   z-index: 10000;
 }
@@ -2716,3 +2720,5 @@ input[type=checkbox]:focus { outline: none; box-shadow: 0 0 0 3px #000, 0 0 0 6p
 .profile-default-name { color: #00b7c7; }
 /* Option rows of the player settings never wrap: the button margins alone space them, without the width of the spaces between. */
 .settings-oled > div { white-space: nowrap; font-size: 0; }
+/* Notices: one sentence per line, centred, wide enough that a sentence never breaks in the middle. */
+#notice { white-space: pre-line; max-width: 60%; line-height: 1.45; padding: 14px 32px; }

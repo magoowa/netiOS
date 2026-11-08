@@ -1,6 +1,6 @@
 {
   "name": "com.netiago.webos.service",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "main": "service.js",
   "private": true
 }
